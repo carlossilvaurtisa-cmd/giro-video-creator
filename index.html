@@ -908,11 +908,23 @@ async function renderVideo() {
   recorder.start(100);
 
   if (hasAudio && audioCtx && audioBuffer) {
+    // Nodo de ganancia para fade-out al final
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = 1;
+
     audioSource = audioCtx.createBufferSource();
     audioSource.buffer = audioBuffer;
-    audioSource.connect(audioDest);
-    audioSource.connect(audioCtx.destination);
+    audioSource.connect(gainNode);
+    gainNode.connect(audioDest);
+    gainNode.connect(audioCtx.destination);
     audioSource.start(audioCtx.currentTime);
+
+    // Fade-out en los últimos 2.5 segundos del video
+    const FADE_DUR = Math.min(2.5, totalDuration * 0.3);
+    const fadeStart = Math.max(0, totalDuration - FADE_DUR);
+    const now = audioCtx.currentTime;
+    gainNode.gain.setValueAtTime(1, now + fadeStart);
+    gainNode.gain.linearRampToValueAtTime(0, now + totalDuration);
   }
 
   const startTime = hasAudio ? audioCtx.currentTime : performance.now() / 1000;
