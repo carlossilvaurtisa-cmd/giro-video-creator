@@ -789,6 +789,45 @@ btnRender.addEventListener('click', () => {
 });
 
 // ===== 11. RENDERIZADO DEL VIDEO =====
+
+// Calcula dimensiones de salida basadas en la proporción de la primera foto
+function getOutputDimensions(images, maxDim) {
+  if (!images.length) return { W: 1920, H: 1080 };
+  const img = images[0];
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  const ratio = iw / ih; // >1 landscape, <1 portrait, =1 square
+
+  let W, H;
+  if (ratio >= 1) {
+    W = Math.min(iw, maxDim);
+    H = Math.round(W / ratio);
+  } else {
+    H = Math.min(ih, maxDim);
+    W = Math.round(H * ratio);
+  }
+  // H.264 requiere dimensiones pares
+  W = W % 2 === 0 ? W : W + 1;
+  H = H % 2 === 0 ? H : H + 1;
+  return { W, H };
+}
+
+// Selecciona el mejor codec: H.264 MP4 primero, WebM como fallback
+function getBestCodec(hasAudio) {
+  // H.264 + AAC en MP4 (3 Mbps)
+  if (hasAudio && MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
+    return { mime: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', ext: 'mp4', label: 'H.264 MP4' };
+  }
+  if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E')) {
+    return { mime: 'video/mp4;codecs=avc1.42E01E', ext: 'mp4', label: 'H.264 MP4' };
+  }
+  // WebM VP8 + Opus (fallback)
+  if (hasAudio && MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+    return { mime: 'video/webm;codecs=vp8,opus', ext: 'webm', label: 'VP8 WebM' };
+  }
+  return { mime: 'video/webm', ext: 'webm', label: 'WebM' };
+}
+
 async function renderVideo() {
   state.isRendering = true;
   btnRender.disabled = true;
@@ -797,18 +836,22 @@ async function renderVideo() {
   progressFill.style.width = '0%';
   progressText.textContent = 'Preparando...';
 
-  const W = 1920;
-  const H = 1080;
+  const MAX_DIM = 1920;
   const FPS = 30;
+  const BITRATE = 3000000; // 3 Mbps
   const TRANS_DUR = state.transitionDuration;
+
+  // Cargar imágenes primero para detectar proporción
+  progressText.textContent = 'Cargando imágenes...';
+  const images = await Promise.all(state.photos.map(p => loadImage(p.file)));
+
+  // Dimensiones según la proporción real de las fotos
+  const { W, H } = getOutputDimensions(images, MAX_DIM);
 
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
-
-  progressText.textContent = 'Cargando imágenes...';
-  const images = await Promise.all(state.photos.map(p => loadImage(p.file)));
 
   const timelineData = buildTimeline(state.photos, TRANS_DUR);
   const totalDuration = timelineData[timelineData.length - 1].end;
@@ -846,13 +889,13 @@ async function renderVideo() {
     combinedStream = new MediaStream([videoTrack]);
   }
 
-  const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-    ? 'video/webm;codecs=vp8,opus'
-    : 'video/webm';
+  // Codec: H.264 a 3 Mbps preferido, WebM como fallback
+  const codec = getBestCodec(hasAudio);
 
   const recorder = new MediaRecorder(combinedStream, {
-    mimeType,
-    videoBitsPerSecond: 6000000,
+    mimeType: codec.mime,
+    videoBitsPerSecond: BITRATE,
+    audioBitsPerSecond: hasAudio ? 128000 : undefined,
   });
 
   const chunks = [];
@@ -893,7 +936,7 @@ async function renderVideo() {
         lastProgress = progressPct;
         progressFill.style.width = progressPct + '%';
         const remaining = Math.max(0, Math.round(totalDuration - elapsed));
-        progressText.textContent = `Renderizando... ${progressPct}% (quedan ~${remaining}s)`;
+        progressText.textContent = `Renderizando ${codec.label}... ${progressPct}% (quedan ~${remaining}s)`;
       }
 
       if (elapsed >= totalDuration) {
@@ -913,11 +956,11 @@ async function renderVideo() {
 
   if (audioCtx) await audioCtx.close();
 
-  const blob = new Blob(recordedChunks, { type: 'video/webm' });
+  const blob = new Blob(recordedChunks, { type: codec.mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'giro_video_' + Date.now() + '.webm';
+  a.download = 'giro_video_' + Date.now() + '.' + codec.ext;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -927,7 +970,7 @@ async function renderVideo() {
   btnRender.disabled = false;
   btnRender.innerHTML = '<span>🎬</span> Crear Video';
   progressWrap.classList.remove('active');
-  toast('✅ ¡Video creado! Descargando...');
+  toast('✅ ¡Video creado! (' + codec.label + ', ' + W + '×' + H + ', 3 Mbps)');
 }
 
 // ===== 12. FUNCIONES DE RENDER =====
