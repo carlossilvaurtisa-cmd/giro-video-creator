@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GIRO | Video Creator</title>
+<style>
+/* ============================================================
+   GIRO BRAND — Manual de Marca 2024
+   Rojo: #F32624 | Gris: #636363 | Blanco: #FFFFFF | Negro: #000000
+   Complementarios: #F0D64E · #C9523E · #42A9E0
+   Tipografía: Century Gothic (principal), Segoe UI (fallback)
+   ============================================================ */
+
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --rojo:    #F32624;
+  --rojo-h:  #d41f1d;
+  --gris:    #636363;
+  --gris-c:  #4a4a4a;
+  --gris-l:  #f5f5f5;
+  --gris-b:  #e0e0e0;
+  --blanco:  #FFFFFF;
+  --negro:   #000000;
+  --dorado:  #F0D64E;
+  --terra:   #C9523E;
+  --celeste: #42A9E0;
+
+  --font:    'Century Gothic', 'Tw Cen MT', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --radius:  8px;
+  --radius-sm: 5px;
+  --shadow:  0 2px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.10);
+}
+
+body {
+  font-family: var(--font);
+  background: var(--blanco);
+  color: var(--negro);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+/* ===== HEADER ===== */
+.app-header {
+  background: var(--blanco);
+  border-bottom: 3px solid var(--rojo);
+  padding: 14px 28px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow);
+}
+.app-header .logo-word {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--rojo);
+  letter-spacing: -0.5px;
+}
+.app-header h1 {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--gris-c);
+  border-left: 2px solid var(--gris-b);
+  padding-left: 14px;
+}
+.app-header .badge {
+  background: var(--rojo);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  margin-left: auto;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* ===== MAIN ===== */
+.app-main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ===== CARDS ===== */
+.card {
+  background: var(--blanco);
+  border: 1px solid var(--gris-b);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--gris-c);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.card-header .icon { font-size: 17px; }
+.card-header::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: var(--gris-l);
+  margin-left: 6px;
+}
+
+/* ===== UPLOAD ZONE ===== */
+.upload-zone {
+  border: 2px dashed var(--gris-b);
+  border-radius: var(--radius);
+  padding: 36px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--gris-l);
+}
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--rojo);
+  background: #fef5f5;
+}
+.upload-zone .icon-lg { font-size: 38px; display: block; margin-bottom: 8px; }
+.upload-zone p { color: var(--gris); font-size: 14px; }
+.upload-zone .browse { color: var(--rojo); text-decoration: underline; cursor: pointer; font-weight: 700; }
+
+/* ===== TIMELINE ===== */
+.timeline {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: 96px;
+  align-items: flex-start;
+  margin-top: 4px;
+}
+.timeline.empty::after {
+  content: 'Tus fotos aparecerán aquí. Arrastralas para reordenar.';
+  color: var(--gris);
+  font-size: 13px;
+  width: 100%;
+  text-align: center;
+  padding: 30px 0;
+}
+
+.photo-card {
+  width: 140px;
+  flex-shrink: 0;
+  background: var(--blanco);
+  border: 2px solid var(--gris-b);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  cursor: grab;
+  transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+  position: relative;
+  box-shadow: var(--shadow);
+}
+.photo-card:hover {
+  border-color: var(--rojo);
+  box-shadow: var(--shadow-lg);
+}
+.photo-card.dragging { opacity: 0.45; transform: scale(0.95); }
+.photo-card.drag-target { border-color: var(--rojo); border-style: dashed; background: #fef5f5; }
+.photo-card .thumb {
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+.photo-card .info {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--gris);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--gris-l);
+}
+.photo-card .info select {
+  background: var(--blanco);
+  color: var(--negro);
+  border: 1px solid var(--gris-b);
+  border-radius: 3px;
+  font-size: 11px;
+  padding: 2px 6px;
+  font-family: var(--font);
+}
+.photo-card .btn-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: var(--rojo);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.photo-card:hover .btn-remove { opacity: 1; }
+
+/* ===== CONTROLS ===== */
+.controls-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.control-group label {
+  font-size: 13px;
+  color: var(--gris-c);
+  white-space: nowrap;
+  font-weight: 700;
+}
+.control-group select, .control-group input {
+  background: var(--blanco);
+  color: var(--negro);
+  border: 1px solid var(--gris-b);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-family: var(--font);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.control-group select:focus, .control-group input:focus {
+  border-color: var(--rojo);
+}
+
+.duration-btns { display: flex; gap: 3px; }
+.duration-btn {
+  padding: 7px 16px;
+  border: 1px solid var(--gris-b);
+  background: var(--blanco);
+  color: var(--gris-c);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font);
+  font-weight: 700;
+  transition: all 0.15s;
+}
+.duration-btn.active {
+  background: var(--rojo);
+  border-color: var(--rojo);
+  color: #fff;
+}
+.duration-btn:not(.active):hover {
+  border-color: var(--rojo);
+  color: var(--rojo);
+}
+
+/* ===== MUSIC ===== */
+.music-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+.music-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--gris-l);
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 13px;
+}
+.music-item:hover { border-color: var(--gris-b); }
+.music-item.selected {
+  border-color: var(--rojo);
+  background: #fef5f5;
+}
+.music-item .track-icon { font-size: 16px; }
+.music-item .track-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-item .btn-preview {
+  background: none;
+  border: none;
+  color: var(--rojo);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+}
+
+.upload-music-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: var(--blanco);
+  border: 1px dashed var(--gris-b);
+  color: var(--gris-c);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font);
+  transition: all 0.2s;
+}
+.upload-music-btn:hover {
+  border-color: var(--rojo);
+  color: var(--rojo);
+}
+
+.upload-music-section {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.music-file-input { display: none; }
+.music-name-input {
+  background: var(--blanco);
+  color: var(--negro);
+  border: 1px solid var(--gris-b);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 13px;
+  width: 200px;
+  font-family: var(--font);
+  outline: none;
+}
+.music-name-input:focus { border-color: var(--rojo); }
+
+/* ===== RENDER SECTION ===== */
+.render-section { text-align: center; }
+.btn-render {
+  padding: 15px 52px;
+  background: var(--rojo);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+.btn-render:hover { background: var(--rojo-h); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(243,38,36,0.3); }
+.btn-render:disabled { background: var(--gris-b); color: var(--gris); cursor: not-allowed; transform: none; box-shadow: none; }
+
+.progress-wrap {
+  margin-top: 18px;
+  display: none;
+}
+.progress-wrap.active { display: block; }
+.progress-bar {
+  height: 8px;
+  background: var(--gris-l);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--rojo);
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.3s;
+}
+.progress-text {
+  font-size: 13px;
+  color: var(--gris);
+  margin-top: 8px;
+  font-weight: 700;
+}
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--gris);
+}
+.empty-state .icon { font-size: 44px; display: block; margin-bottom: 8px; }
+
+/* ===== TOAST ===== */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--blanco);
+  border: 1px solid var(--gris-b);
+  padding: 14px 22px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  z-index: 999;
+  animation: slideIn 0.3s ease;
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font);
+}
+.toast.success { border-left: 4px solid var(--rojo); }
+.toast.error { border-left: 4px solid var(--terra); }
+@keyframes slideIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 640px) {
+  .app-main { padding: 12px; gap: 16px; }
+  .controls-row { flex-direction: column; align-items: flex-start; }
+  .photo-card { width: 110px; }
+  .photo-card .thumb { height: 76px; }
+  .btn-render { width: 100%; }
+  .app-header { padding: 10px 14px; }
+  .app-header h1 { font-size: 14px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header class="app-header">
+  <span class="logo-word">GIRO</span>
+  <h1>Video Creator</h1>
+  <span class="badge">Gratuito</span>
+</header>
+
+<!-- ===== MAIN ===== -->
+<main class="app-main">
+
+  <!-- FOTOS -->
+  <section class="card" id="photosSection">
+    <div class="card-header"><span class="icon">📸</span> Fotos</div>
+    <div class="upload-zone" id="uploadZone">
+      <span class="icon-lg">🖼️</span>
+      <p>Arrastrá tus fotos aquí o <span class="browse">hacé clic para seleccionar</span></p>
+      <p style="font-size:11px;margin-top:4px;color:var(--gris);">JPG, PNG, WebP — múltiples a la vez</p>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" multiple hidden>
+    <div class="timeline empty" id="timeline"></div>
+  </section>
+
+  <!-- AJUSTES -->
+  <section class="card">
+    <div class="card-header"><span class="icon">⚙️</span> Ajustes</div>
+    <div class="controls-row">
+      <div class="control-group">
+        <label>Duración por foto:</label>
+        <div class="duration-btns" id="durationBtns">
+          <button class="duration-btn" data-dur="5">5s</button>
+          <button class="duration-btn active" data-dur="8">8s</button>
+          <button class="duration-btn" data-dur="10">10s</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <label>Transición:</label>
+        <select id="transitionSelect">
+          <option value="fade">Fundido (Fade)</option>
+          <option value="slide-left">Deslizar ← Izquierda</option>
+          <option value="slide-right">Deslizar → Derecha</option>
+          <option value="slide-up">Deslizar ↑ Arriba</option>
+          <option value="slide-down">Deslizar ↓ Abajo</option>
+          <option value="zoom">Zoom</option>
+          <option value="wipe">Barrido Horizontal</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Duración transición:</label>
+        <select id="transitionDur">
+          <option value="0.5">0.5s (rápida)</option>
+          <option value="0.8" selected>0.8s (normal)</option>
+          <option value="1.2">1.2s (lenta)</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- MÚSICA -->
+  <section class="card">
+    <div class="card-header"><span class="icon">🎵</span> Música de fondo</div>
+    <div class="music-list" id="musicList">
+      <div class="empty-state">
+        <span class="icon">🎼</span>
+        <p>Cargando pistas desde la biblioteca...</p>
+      </div>
+    </div>
+    <div class="upload-music-section">
+      <button class="upload-music-btn" id="btnUploadMusic">
+        <span>➕</span> Agregar MP3 a la biblioteca
+      </button>
+      <input type="file" class="music-file-input" id="musicFileInput" accept="audio/mpeg,.mp3">
+      <span style="font-size:12px;color:var(--gris);">o subí tus propios temas</span>
+    </div>
+  </section>
+
+  <!-- RENDER -->
+  <section class="card render-section">
+    <button class="btn-render" id="btnRender" disabled>
+      <span>🎬</span> Crear Video
+    </button>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <p class="progress-text" id="progressText">Renderizando...</p>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ============================================================
+//  GIRO VIDEO CREATOR — Todo el procesamiento en el navegador
+// ============================================================
+
+// ===== CONFIGURACIÓN =====
+const TOTAL_MUSIC_TRACKS = 20;
+const MUSIC_FOLDER = 'musica/';
+
+// ===== ESTADO GLOBAL =====
+const state = {
+  photos: [],              // { id, file, thumbUrl, duration }
+  musicTracks: [],         // { name, url, blob }
+  selectedTrackIdx: -1,
+  transitionType: 'fade',
+  transitionDuration: 0.8,
+  defaultDuration: 8,
+  isRendering: false,
+  audioPreview: null,
+  previewPlayingIdx: -1,
+};
+
+// ===== ELEMENTOS DOM =====
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+const uploadZone = $('#uploadZone');
+const fileInput = $('#fileInput');
+const timeline = $('#timeline');
+const durationBtns = $('#durationBtns');
+const transitionSelect = $('#transitionSelect');
+const transitionDur = $('#transitionDur');
+const musicList = $('#musicList');
+const btnUploadMusic = $('#btnUploadMusic');
+const musicFileInput = $('#musicFileInput');
+const btnRender = $('#btnRender');
+const progressWrap = $('#progressWrap');
+const progressFill = $('#progressFill');
+const progressText = $('#progressText');
+
+let photoIdCounter = 0;
+
+// ===== 1. CARGA DE MÚSICA =====
+async function loadMusicLibrary() {
+  const tracks = [];
+  for (let i = 1; i <= TOTAL_MUSIC_TRACKS; i++) {
+    const filename = `tema-${String(i).padStart(2, '0')}.mp3`;
+    const url = MUSIC_FOLDER + filename;
+    try {
+      const resp = await fetch(url, { method: 'HEAD' });
+      if (resp.ok) {
+        tracks.push({ name: `Tema ${String(i).padStart(2, '0')}`, url, blob: null });
+      }
+    } catch (e) { /* skip */ }
+  }
+  state.musicTracks = tracks;
+  renderMusicList();
+}
+
+// ===== 2. RENDER MUSIC LIST =====
+function renderMusicList() {
+  if (state.musicTracks.length === 0) {
+    musicList.innerHTML = `
+      <div class="empty-state">
+        <span class="icon">🎼</span>
+        <p>No se encontraron pistas en la carpeta musica/</p>
+        <p style="font-size:12px;margin-top:4px;">Nombrá tus archivos: tema-01.mp3 a tema-20.mp3</p>
+        <p style="font-size:12px;">O subí MP3s manualmente con el botón de abajo</p>
+      </div>`;
+    return;
+  }
+  musicList.innerHTML = state.musicTracks.map((track, idx) => `
+    <div class="music-item ${idx === state.selectedTrackIdx ? 'selected' : ''}"
+         onclick="selectMusic(${idx})">
+      <span class="track-icon">🎵</span>
+      <span class="track-name" title="${track.name}">${track.name}</span>
+      <button class="btn-preview" onclick="event.stopPropagation(); togglePreview(${idx})"
+              title="Previsualizar">
+        ${state.previewPlayingIdx === idx ? '⏹' : '▶'}
+      </button>
+    </div>
+  `).join('');
+}
+
+function selectMusic(idx) {
+  if (state.previewPlayingIdx !== -1) stopPreview();
+  state.selectedTrackIdx = (state.selectedTrackIdx === idx) ? -1 : idx;
+  renderMusicList();
+}
+
+// ===== 3. PREVISUALIZACIÓN DE MÚSICA =====
+function togglePreview(idx) {
+  if (state.previewPlayingIdx === idx) { stopPreview(); return; }
+  stopPreview();
+  const track = state.musicTracks[idx];
+  const audio = new Audio(track.url);
+  audio.volume = 0.6;
+  audio.play().catch(e => console.warn('Error al reproducir:', e));
+  audio.onended = () => { state.previewPlayingIdx = -1; renderMusicList(); };
+  state.audioPreview = audio;
+  state.previewPlayingIdx = idx;
+  renderMusicList();
+}
+
+function stopPreview() {
+  if (state.audioPreview) { state.audioPreview.pause(); state.audioPreview = null; }
+  state.previewPlayingIdx = -1;
+}
+
+// ===== 4. SUBIR MÚSICA MANUAL =====
+btnUploadMusic.addEventListener('click', () => musicFileInput.click());
+
+musicFileInput.addEventListener('change', async () => {
+  const files = Array.from(musicFileInput.files);
+  for (const file of files) {
+    if (!file.type.startsWith('audio/') && !file.name.endsWith('.mp3')) continue;
+    const blobUrl = URL.createObjectURL(file);
+    state.musicTracks.push({
+      name: file.name.replace('.mp3', '').replace(/_/g, ' '),
+      url: blobUrl,
+      blob: file,
+    });
+  }
+  renderMusicList();
+  musicFileInput.value = '';
+  toast('✅ ' + files.length + ' pista(s) agregada(s)');
+});
+
+// ===== 5. SUBIR FOTOS =====
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => addPhotos(Array.from(fileInput.files)));
+
+uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => { uploadZone.classList.remove('drag-over'); });
+uploadZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+  if (files.length) addPhotos(files);
+});
+
+function addPhotos(files) {
+  files.forEach(file => {
+    const id = ++photoIdCounter;
+    const thumbUrl = URL.createObjectURL(file);
+    state.photos.push({ id, file, thumbUrl, duration: state.defaultDuration });
+  });
+  fileInput.value = '';
+  renderTimeline();
+  updateRenderButton();
+}
+
+// ===== 6. TIMELINE =====
+function renderTimeline() {
+  if (state.photos.length === 0) {
+    timeline.className = 'timeline empty';
+    timeline.innerHTML = '';
+    return;
+  }
+  timeline.className = 'timeline';
+  timeline.innerHTML = state.photos.map((photo, idx) => `
+    <div class="photo-card" draggable="true" data-idx="${idx}"
+         ondragstart="dragStart(event, ${idx})"
+         ondragover="dragOver(event)"
+         ondragleave="dragLeave(event)"
+         ondrop="drop(event, ${idx})"
+         ondragend="dragEnd(event)">
+      <img class="thumb" src="${photo.thumbUrl}" alt="Foto ${idx + 1}">
+      <button class="btn-remove" onclick="removePhoto(${idx})" title="Eliminar">✕</button>
+      <div class="info">
+        <select onchange="setPhotoDuration(${idx}, this.value)" value="${photo.duration}">
+          <option value="5" ${photo.duration === 5 ? 'selected' : ''}>5s</option>
+          <option value="8" ${photo.duration === 8 ? 'selected' : ''}>8s</option>
+          <option value="10" ${photo.duration === 10 ? 'selected' : ''}>10s</option>
+        </select>
+        <span>#${idx + 1}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function removePhoto(idx) {
+  URL.revokeObjectURL(state.photos[idx].thumbUrl);
+  state.photos.splice(idx, 1);
+  renderTimeline();
+  updateRenderButton();
+}
+
+function setPhotoDuration(idx, dur) {
+  state.photos[idx].duration = parseInt(dur);
+}
+
+// ===== 7. DRAG & DROP REORDENAR =====
+let dragIdx = null;
+
+function dragStart(e, idx) {
+  dragIdx = idx;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', idx);
+}
+function dragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const card = e.target.closest('.photo-card');
+  if (card) card.classList.add('drag-target');
+}
+function dragLeave(e) {
+  const card = e.target.closest('.photo-card');
+  if (card) card.classList.remove('drag-target');
+}
+function drop(e, targetIdx) {
+  e.preventDefault();
+  document.querySelectorAll('.photo-card').forEach(c => c.classList.remove('drag-target'));
+  if (dragIdx === null || dragIdx === targetIdx) return;
+  const [moved] = state.photos.splice(dragIdx, 1);
+  state.photos.splice(targetIdx, 0, moved);
+  renderTimeline();
+}
+function dragEnd(e) {
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.photo-card').forEach(c => c.classList.remove('drag-target'));
+  dragIdx = null;
+}
+
+// ===== 8. DURACIÓN GLOBAL =====
+durationBtns.addEventListener('click', (e) => {
+  const btn = e.target.closest('.duration-btn');
+  if (!btn) return;
+  const dur = parseInt(btn.dataset.dur);
+  state.defaultDuration = dur;
+  state.photos.forEach(p => p.duration = dur);
+  $$('.duration-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTimeline();
+});
+
+// ===== 9. TRANSICIÓN =====
+transitionSelect.addEventListener('change', () => {
+  state.transitionType = transitionSelect.value;
+});
+transitionDur.addEventListener('change', () => {
+  state.transitionDuration = parseFloat(transitionDur.value);
+});
+
+// ===== 10. BOTÓN RENDER =====
+function updateRenderButton() {
+  btnRender.disabled = state.photos.length < 2;
+}
+
+btnRender.addEventListener('click', () => {
+  if (state.isRendering) return;
+  if (state.photos.length < 2) {
+    toast('⚠️ Necesitás al menos 2 fotos para crear un video', 'error');
+    return;
+  }
+  renderVideo();
+});
+
+// ===== 11. RENDERIZADO DEL VIDEO =====
+async function renderVideo() {
+  state.isRendering = true;
+  btnRender.disabled = true;
+  btnRender.innerHTML = '<span>⏳</span> Renderizando...';
+  progressWrap.classList.add('active');
+  progressFill.style.width = '0%';
+  progressText.textContent = 'Preparando...';
+
+  const W = 1920;
+  const H = 1080;
+  const FPS = 30;
+  const TRANS_DUR = state.transitionDuration;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  progressText.textContent = 'Cargando imágenes...';
+  const images = await Promise.all(state.photos.map(p => loadImage(p.file)));
+
+  const timelineData = buildTimeline(state.photos, TRANS_DUR);
+  const totalDuration = timelineData[timelineData.length - 1].end;
+
+  let audioCtx = null;
+  let audioSource = null;
+  let audioDest = null;
+  let audioBuffer = null;
+  let hasAudio = false;
+
+  if (state.selectedTrackIdx >= 0 && state.selectedTrackIdx < state.musicTracks.length) {
+    try {
+      progressText.textContent = 'Cargando música...';
+      const track = state.musicTracks[state.selectedTrackIdx];
+      const resp = await fetch(track.url);
+      const arrayBuf = await resp.arrayBuffer();
+      audioCtx = new AudioContext();
+      audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+      audioDest = audioCtx.createMediaStreamDestination();
+      hasAudio = true;
+    } catch (e) {
+      console.warn('Error al cargar audio:', e);
+      hasAudio = false;
+    }
+  }
+
+  const videoStream = canvas.captureStream(FPS);
+  const videoTrack = videoStream.getVideoTracks()[0];
+
+  let combinedStream;
+  if (hasAudio && audioDest) {
+    const audioTrack = audioDest.stream.getAudioTracks()[0];
+    combinedStream = new MediaStream([videoTrack, audioTrack]);
+  } else {
+    combinedStream = new MediaStream([videoTrack]);
+  }
+
+  const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+    ? 'video/webm;codecs=vp8,opus'
+    : 'video/webm';
+
+  const recorder = new MediaRecorder(combinedStream, {
+    mimeType,
+    videoBitsPerSecond: 6000000,
+  });
+
+  const chunks = [];
+  recorder.ondataavailable = e => chunks.push(e.data);
+
+  const recordingDone = new Promise(resolve => {
+    recorder.onstop = () => resolve(chunks);
+  });
+
+  recorder.start(100);
+
+  if (hasAudio && audioCtx && audioBuffer) {
+    audioSource = audioCtx.createBufferSource();
+    audioSource.buffer = audioBuffer;
+    audioSource.connect(audioDest);
+    audioSource.connect(audioCtx.destination);
+    audioSource.start(audioCtx.currentTime);
+  }
+
+  const startTime = hasAudio ? audioCtx.currentTime : performance.now() / 1000;
+  let lastProgress = -1;
+
+  await new Promise(resolve => {
+    function renderLoop() {
+      if (!state.isRendering) {
+        recorder.stop();
+        if (audioSource) audioSource.stop();
+        resolve();
+        return;
+      }
+
+      const now = hasAudio ? audioCtx.currentTime : performance.now() / 1000;
+      const elapsed = now - startTime;
+
+      const progress = Math.min(elapsed / totalDuration, 1);
+      const progressPct = Math.round(progress * 100);
+      if (progressPct !== lastProgress) {
+        lastProgress = progressPct;
+        progressFill.style.width = progressPct + '%';
+        const remaining = Math.max(0, Math.round(totalDuration - elapsed));
+        progressText.textContent = `Renderizando... ${progressPct}% (quedan ~${remaining}s)`;
+      }
+
+      if (elapsed >= totalDuration) {
+        recorder.stop();
+        if (audioSource) { try { audioSource.stop(); } catch(e) {} }
+        resolve();
+        return;
+      }
+
+      drawFrame(ctx, images, timelineData, elapsed, W, H);
+      requestAnimationFrame(renderLoop);
+    }
+    renderLoop();
+  });
+
+  const recordedChunks = await recordingDone;
+
+  if (audioCtx) await audioCtx.close();
+
+  const blob = new Blob(recordedChunks, { type: 'video/webm' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'giro_video_' + Date.now() + '.webm';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  state.isRendering = false;
+  btnRender.disabled = false;
+  btnRender.innerHTML = '<span>🎬</span> Crear Video';
+  progressWrap.classList.remove('active');
+  toast('✅ ¡Video creado! Descargando...');
+}
+
+// ===== 12. FUNCIONES DE RENDER =====
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function buildTimeline(photos, transDur) {
+  const segments = [];
+  let t = 0;
+  for (let i = 0; i < photos.length; i++) {
+    segments.push({ type: 'photo', index: i, start: t, end: t + photos[i].duration });
+    t += photos[i].duration;
+    if (i < photos.length - 1) {
+      segments.push({ type: 'transition', from: i, to: i + 1, start: t, end: t + transDur });
+      t += transDur;
+    }
+  }
+  return segments;
+}
+
+function findSegment(timeline, time) {
+  for (const seg of timeline) {
+    if (time >= seg.start && time < seg.end) return seg;
+  }
+  return timeline[timeline.length - 1];
+}
+
+function drawFrame(ctx, images, timeline, elapsed, W, H) {
+  const seg = findSegment(timeline, elapsed);
+  ctx.clearRect(0, 0, W, H);
+  if (seg.type === 'photo') {
+    drawImageCover(ctx, images[seg.index], W, H);
+  } else if (seg.type === 'transition') {
+    const progress = Math.min(1, Math.max(0, (elapsed - seg.start) / (seg.end - seg.start)));
+    drawTransition(ctx, images[seg.from], images[seg.to], progress, state.transitionType, W, H);
+  }
+}
+
+function drawImageCover(ctx, img, W, H, ox = 0, oy = 0, scale = 1) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  const s = Math.max(W / iw, H / ih) * scale;
+  const sw = iw * s;
+  const sh = ih * s;
+  const sx = (W - sw) / 2 + ox;
+  const sy = (H - sh) / 2 + oy;
+  ctx.drawImage(img, sx, sy, sw, sh);
+}
+
+function drawTransition(ctx, imgA, imgB, progress, type, W, H) {
+  const p = easeInOutCubic(progress);
+  switch (type) {
+    case 'fade':
+      ctx.globalAlpha = 1 - p;
+      drawImageCover(ctx, imgA, W, H);
+      ctx.globalAlpha = p;
+      drawImageCover(ctx, imgB, W, H);
+      ctx.globalAlpha = 1;
+      break;
+    case 'slide-left':
+      drawImageCover(ctx, imgA, W, H, -p * W, 0);
+      drawImageCover(ctx, imgB, W, H, (1 - p) * W, 0);
+      break;
+    case 'slide-right':
+      drawImageCover(ctx, imgA, W, H, p * W, 0);
+      drawImageCover(ctx, imgB, W, H, -(1 - p) * W, 0);
+      break;
+    case 'slide-up':
+      drawImageCover(ctx, imgA, W, H, 0, -p * H);
+      drawImageCover(ctx, imgB, W, H, 0, (1 - p) * H);
+      break;
+    case 'slide-down':
+      drawImageCover(ctx, imgA, W, H, 0, p * H);
+      drawImageCover(ctx, imgB, W, H, 0, -(1 - p) * H);
+      break;
+    case 'zoom':
+      ctx.globalAlpha = 1 - p;
+      drawImageCover(ctx, imgA, W, H, 0, 0, 1 + p * 0.3);
+      ctx.globalAlpha = p;
+      drawImageCover(ctx, imgB, W, H, 0, 0, 1.3 - p * 0.3);
+      ctx.globalAlpha = 1;
+      break;
+    case 'wipe':
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, W * p, H);
+      ctx.clip();
+      drawImageCover(ctx, imgA, W, H);
+      ctx.restore();
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(W * p, 0, W * (1 - p), H);
+      ctx.clip();
+      drawImageCover(ctx, imgB, W, H);
+      ctx.restore();
+      break;
+    default:
+      drawImageCover(ctx, imgB, W, H);
+  }
+}
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// ===== 13. TOAST =====
+function toast(msg, type = 'success') {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ===== INICIALIZACIÓN =====
+async function init() {
+  await loadMusicLibrary();
+  updateRenderButton();
+}
+
+init().catch(err => {
+  console.error('Error al iniciar:', err);
+  musicList.innerHTML = `
+    <div class="empty-state">
+      <span class="icon">🎼</span>
+      <p>Error al cargar la biblioteca musical</p>
+      <p style="font-size:12px;">Podés subir MP3s manualmente</p>
+    </div>`;
+});
+</script>
+
+</body>
+</html>
