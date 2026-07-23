@@ -93,37 +93,49 @@ if st.session_state.step == 1:
             if not any(p[0] == f.name for p in st.session_state.photos):
                 st.session_state.photos.append([f.name, f.read(), 8])
 
-    # Mostrar fotos con opciones de orden
+    # Mostrar fotos en orden horizontal (izquierda → derecha) con numeración clara
     if st.session_state.photos:
-        st.caption(f"**{len(st.session_state.photos)} fotos** — usá los botones para ordenar")
+        st.caption(f"**{len(st.session_state.photos)} fotos** — orden de aparición en el video:")
 
-        for i, photo in enumerate(st.session_state.photos):
-            name, data, dur = photo
-            c1, c2, c3, c4 = st.columns([1, 3, 1, 1])
-            with c1:
+        # Galería horizontal con números grandes
+        n = len(st.session_state.photos)
+        cols = st.columns(min(n, 8))
+
+        for i in range(n):
+            name, data, dur = st.session_state.photos[i]
+            with cols[i]:
+                # Número bien visible
+                st.markdown(f"""
+                <div style='background:{ROJO};color:white;width:28px;height:28px;
+                border-radius:50%;display:flex;align-items:center;justify-content:center;
+                font-weight:700;font-size:14px;margin:0 auto 4px auto;'>{i+1}</div>
+                """, unsafe_allow_html=True)
+
                 try:
                     img = Image.open(io.BytesIO(data))
-                    st.image(img, width=80)
+                    st.image(img, use_container_width=True)
                 except:
                     st.warning("?")
-            with c2:
-                st.write(f"**{i+1}.** {name}")
-            with c3:
-                if i > 0:
-                    if st.button("⬆", key=f"up_{i}"):
-                        st.session_state.photos[i], st.session_state.photos[i-1] = \
-                            st.session_state.photos[i-1], st.session_state.photos[i]
-                        st.rerun()
-            with c4:
-                if i < len(st.session_state.photos) - 1:
-                    if st.button("⬇", key=f"down_{i}"):
-                        st.session_state.photos[i], st.session_state.photos[i+1] = \
-                            st.session_state.photos[i+1], st.session_state.photos[i]
-                        st.rerun()
-                else:
-                    if st.button("✕", key=f"del_{i}"):
+                st.caption(name[:20] + ("…" if len(name) > 20 else ""))
+
+                # Botones de reorden
+                bc1, bc2, bc3 = st.columns([1, 1, 1])
+                with bc1:
+                    if i > 0:
+                        if st.button("◀", key=f"left_{i}", help="Mover a la izquierda"):
+                            st.session_state.photos[i], st.session_state.photos[i-1] = \
+                                st.session_state.photos[i-1], st.session_state.photos[i]
+                            st.rerun()
+                with bc2:
+                    if st.button("✕", key=f"del_{i}", help="Eliminar"):
                         st.session_state.photos.pop(i)
                         st.rerun()
+                with bc3:
+                    if i < n - 1:
+                        if st.button("▶", key=f"right_{i}", help="Mover a la derecha"):
+                            st.session_state.photos[i], st.session_state.photos[i+1] = \
+                                st.session_state.photos[i+1], st.session_state.photos[i]
+                            st.rerun()
 
         # Botón siguiente
         st.divider()
