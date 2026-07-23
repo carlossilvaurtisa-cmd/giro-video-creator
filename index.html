@@ -790,25 +790,16 @@ btnRender.addEventListener('click', () => {
 
 // ===== 11. RENDERIZADO DEL VIDEO =====
 
-// Calcula dimensiones de salida basadas en la proporción de la primera foto
-function getOutputDimensions(images, maxDim) {
+// Usa exactamente las dimensiones de la primera foto (proporción 1:1)
+// Ajusta a números pares requeridos por H.264 (máximo ±1 píxel)
+function getOutputDimensions(images) {
   if (!images.length) return { W: 1920, H: 1080 };
   const img = images[0];
-  const iw = img.naturalWidth || img.width;
-  const ih = img.naturalHeight || img.height;
-  const ratio = iw / ih; // >1 landscape, <1 portrait, =1 square
-
-  let W, H;
-  if (ratio >= 1) {
-    W = Math.min(iw, maxDim);
-    H = Math.round(W / ratio);
-  } else {
-    H = Math.min(ih, maxDim);
-    W = Math.round(H * ratio);
-  }
-  // H.264 requiere dimensiones pares
-  W = W % 2 === 0 ? W : W + 1;
-  H = H % 2 === 0 ? H : H + 1;
+  let W = img.naturalWidth || img.width;
+  let H = img.naturalHeight || img.height;
+  // H.264 requiere dimensiones pares — ajuste mínimo (±1 px)
+  if (W % 2 !== 0) W++;
+  if (H % 2 !== 0) H++;
   return { W, H };
 }
 
@@ -836,7 +827,6 @@ async function renderVideo() {
   progressFill.style.width = '0%';
   progressText.textContent = 'Preparando...';
 
-  const MAX_DIM = 1920;
   const FPS = 30;
   const BITRATE = 3000000; // 3 Mbps
   const TRANS_DUR = state.transitionDuration;
@@ -845,8 +835,8 @@ async function renderVideo() {
   progressText.textContent = 'Cargando imágenes...';
   const images = await Promise.all(state.photos.map(p => loadImage(p.file)));
 
-  // Dimensiones según la proporción real de las fotos
-  const { W, H } = getOutputDimensions(images, MAX_DIM);
+  // Dimensiones exactas de la primera foto
+  const { W, H } = getOutputDimensions(images);
 
   const canvas = document.createElement('canvas');
   canvas.width = W;
