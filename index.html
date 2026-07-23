@@ -901,10 +901,14 @@ async function renderVideo() {
     progressText.textContent = 'Combinando video + música (FFmpeg)...';
     try {
       const ff = await getFFmpeg();
-      await ff.writeFile('input.webm', new Uint8Array(await videoBlob.arrayBuffer()));
+      const videoArr = new Uint8Array(await videoBlob.arrayBuffer());
+      await ff.writeFile('input.webm', videoArr);
       await ff.writeFile('music.mp3', musicBytes);
 
-      // Codecs disponibles en FFmpeg.wasm estándar: mpeg4 (video) + aac (audio) → MP4
+      console.log('📹 Video input:', (videoArr.length / 1024).toFixed(0), 'KB');
+      console.log('🎵 Music input:', (musicBytes.length / 1024).toFixed(0), 'KB');
+
+      // Codecs estándar: mpeg4 (video) + aac (audio) → MP4
       await ff.exec([
         '-i', 'input.webm', '-i', 'music.mp3',
         '-c:v', 'mpeg4', '-c:a', 'aac',
@@ -913,16 +917,25 @@ async function renderVideo() {
       ]);
 
       const out = await ff.readFile('output.mp4');
+      console.log('📦 Output:', (out.length / 1024).toFixed(0), 'KB');
+      
+      // Verificar que el audio se haya incluido (output > video input)
+      if (out.length <= videoArr.length * 1.05) {
+        console.warn('⚠️ Audio parece no haberse incluido (tamaño similar)');
+        toast('⚠️ El audio podría no haberse incluido. Revisá el video.', 'error');
+      }
+
       finalBlob = new Blob([out], { type: 'video/mp4' });
       finalExt = 'mp4';
       finalLabel = 'MP4 + música';
+      console.log('✅ FFmpeg completado:', finalLabel);
 
       await ff.deleteFile('input.webm');
       await ff.deleteFile('music.mp3');
       await ff.deleteFile('output.mp4');
     } catch (e) {
       console.error('FFmpeg:', e);
-      toast('⚠️ Error al combinar audio. Video sin música.', 'error');
+      toast('⚠️ Error FFmpeg: ' + (e.message || 'desconocido'), 'error');
     }
   }
 
