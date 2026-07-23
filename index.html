@@ -818,7 +818,7 @@ async function renderVideo() {
 
   // --- MÚSICA: precargar MP3, decodificar a PCM para AudioEncoder ---
   let audioEl = null;
-  let audioPCM = null;      // Float32Array con samples de audio
+  let audioPCM = null;
   let audioSampleRate = 0;
   let audioChannels = 1;
   let hasAudio = false;
@@ -830,13 +830,16 @@ async function renderVideo() {
       const resp = await fetch(track.url);
       const mp3Bytes = await resp.arrayBuffer();
 
-      // Decodificar MP3 → PCM con Web Audio API
-      const offlineCtx = new OfflineAudioContext(1, 1, 44100);
-      const audioBuffer = await offlineCtx.decodeAudioData(mp3Bytes);
+      // Decodificar MP3 → PCM con AudioContext (OfflineAudioContext falla con length=1)
+      const actx = new AudioContext();
+      if (actx.state === 'suspended') await actx.resume();
+      const audioBuffer = await actx.decodeAudioData(mp3Bytes.slice());
+      await actx.close();
+
       audioSampleRate = audioBuffer.sampleRate;
       audioChannels = audioBuffer.numberOfChannels;
 
-      // Extraer todos los samples (mezclar canales a mono si es stereo)
+      // Mezclar canales a mono
       const totalSamples = audioBuffer.length;
       const mixed = new Float32Array(totalSamples);
       for (let ch = 0; ch < audioChannels; ch++) {
@@ -845,13 +848,23 @@ async function renderVideo() {
       }
       if (audioChannels > 1) { for (let i = 0; i < totalSamples; i++) mixed[i] /= audioChannels; }
 
-      // El fade-out se aplica después, cuando sepamos la duración del video
       audioPCM = mixed;
       audioEl = new Audio(track.url);
       hasAudio = true;
     } catch (e) {
       console.error('Error al cargar música:', e);
+      toast('⚠️ Error al cargar el MP3. ¿Formato válido?', 'error');
     }
+  }
+
+  // Validar que WebCodecs esté disponible (Opera/Chrome/Edge 94+)
+  if (typeof VideoEncoder === 'undefined') {
+    toast('❌ Tu navegador no soporta WebCodecs. Usá Chrome o Edge.', 'error');
+    state.isRendering = false;
+    btnRender.disabled = false;
+    btnRender.innerHTML = '<span>🎬</span> Crear Video';
+    progressWrap.classList.remove('active');
+    return;
   }
 
   // --- IMÁGENES ---
@@ -891,20 +904,15 @@ async function renderVideo() {
     video: { codec: 'avc', width: W, height: H },
     firstTimestampBehavior: 'offset',
   };
-  if (hasAudio) {
+  if (hasAudio && audioEncoder) {
     muxerConfig.audio = { codec: 'aac', sampleRate: audioSampleRate, numberOfChannels: 1 };
   }
   const muxer = new Mp4Muxer.Muxer(muxerConfig);
-  let muxerVideoReady = false;
-  let muxerAudioReady = false;
 
   // --- VIDEO ENCODER (H.264 nativo del navegador) ---
   let videoEncoderError = null;
   const videoEncoder = new VideoEncoder({
-    output: (chunk, meta) => {
-      muxer.addVideoChunk(chunk, meta);
-      if (meta?.keyFrame) muxerVideoReady = true;
-    },
+    output: (chunk, meta) => { muxer.addVideoChunk(chunk, meta); },
     error: (e) => { videoEncoderError = e; console.error('VideoEncoder:', e); },
   });
 
@@ -924,24 +932,37 @@ async function renderVideo() {
 
   // --- AUDIO ENCODER (AAC nativo) ---
   let audioEncoder = null;
-  if (hasAudio && audioPCM) {
-    audioEncoder = new AudioEncoder({
-      output: (chunk, meta) => {
-        muxer.addAudioChunk(chunk, meta);
-        muxerAudioReady = true;
-      },
-      error: (e) => console.error('AudioEncoder:', e),
-    });
+  let audioEncodeDone = !hasAudio; // true si no hay audio que codificar
 
-    const audioSupport = await AudioEncoder.isConfigSupported({
-      codec: 'mp4a.40.2', sampleRate: audioSampleRate,
-      numberOfChannels: 1, bitrate: 128000,
-    });
-    if (audioSupport.supported) {
-      audioEncoder.configure({
+  if (hasAudio && audioPCM) {
+    if (typeof AudioEncoder === 'undefined') {
+      toast('⚠️ AudioEncoder no disponible. Video sin música.', 'error');
+      hasAudio = false;
+      audioEncodeDone = true;
+    } else {
+      const audioSupport = await AudioEncoder.isConfigSupported({
         codec: 'mp4a.40.2', sampleRate: audioSampleRate,
         numberOfChannels: 1, bitrate: 128000,
       });
+
+      if (!audioSupport.supported) {
+        toast('⚠️ Codec AAC no soportado. Video sin música.', 'error');
+        hasAudio = false;
+        audioEncodeDone = true;
+      } else {
+        audioEncoder = new AudioEncoder({
+          output: (chunk, meta) => { muxer.addAudioChunk(chunk, meta); },
+          error: (e) => {
+            console.error('AudioEncoder:', e);
+            toast('⚠️ Error codificando audio. Video sin música.', 'error');
+            hasAudio = false;
+          },
+        });
+        audioEncoder.configure({
+          codec: 'mp4a.40.2', sampleRate: audioSampleRate,
+          numberOfChannels: 1, bitrate: 128000,
+        });
+      }
     }
   }
 
@@ -951,30 +972,39 @@ async function renderVideo() {
     audioEl.play().catch(() => {});
   }
 
-  // --- ENCODIFICAR AUDIO (en paralelo, una sola ráfaga) ---
+  // --- ENCODIFICAR AUDIO (ráfaga, 100ms chunks) ---
   if (hasAudio && audioEncoder && audioPCM) {
-    const samplesPerChunk = Math.floor(audioSampleRate / 10); // 100ms chunks
+    const samplesPerChunk = Math.floor(audioSampleRate / 10);
     let offset = 0;
     let timestamp = 0;
     while (offset < audioPCM.length) {
       const chunkSize = Math.min(samplesPerChunk, audioPCM.length - offset);
+      if (chunkSize <= 0) break;
       const chunk = audioPCM.slice(offset, offset + chunkSize);
-      const audioData = new AudioData({
-        format: 'f32-planar',
-        sampleRate: audioSampleRate,
-        numberOfFrames: chunkSize,
-        numberOfChannels: 1,
-        timestamp: timestamp,
-        data: chunk,
-      });
-      audioEncoder.encode(audioData);
-      audioData.close();
+      try {
+        const audioData = new AudioData({
+          format: 'f32-planar',
+          sampleRate: audioSampleRate,
+          numberOfFrames: chunkSize,
+          numberOfChannels: 1,
+          timestamp: timestamp,
+          data: chunk,
+        });
+        audioEncoder.encode(audioData);
+        audioData.close();
+      } catch(e) {
+        console.error('AudioData error:', e);
+        break;
+      }
       offset += chunkSize;
-      timestamp += Math.round((chunkSize / audioSampleRate) * 1_000_000); // microsegundos
+      timestamp += Math.round((chunkSize / audioSampleRate) * 1_000_000);
     }
-    audioEncoder.flush().then(() => { muxerAudioReady = true; });
-  } else {
-    muxerAudioReady = true; // sin audio → listo
+    try {
+      await audioEncoder.flush();
+    } catch(e) {
+      console.error('AudioEncoder flush error:', e);
+    }
+    audioEncodeDone = true;
   }
 
   // --- LOOP DE RENDER + ENCODIFICACIÓN DE VIDEO ---
@@ -1038,10 +1068,13 @@ async function renderVideo() {
   if (audioEl) { audioEl.pause(); audioEl = null; }
   await videoEncoder.flush();
   videoEncoder.close();
-  if (audioEncoder) { audioEncoder.close(); }
+  if (audioEncoder) {
+    await audioEncoder.flush();
+    audioEncoder.close();
+  }
 
-  // Esperar que el muxer termine
-  await new Promise(r => setTimeout(r, 200));
+  // Pequeña pausa para que el muxer procese todo
+  await new Promise(r => setTimeout(r, 300));
   muxer.finalize();
 
   // --- OBTENER BLOB Y DESCARGAR ---
@@ -1058,7 +1091,7 @@ async function renderVideo() {
   btnRender.disabled = false;
   btnRender.innerHTML = '<span>🎬</span> Crear Video';
   progressWrap.classList.remove('active');
-  toast('✅ ¡Video creado! (H.264 MP4 + AAC, ' + W + '×' + H + ', 2 Mbps)');
+  toast('✅ ¡Video creado! (H.264 MP4' + (hasAudio ? ' + música' : '') + ', ' + W + '×' + H + ', 2 Mbps)');
 }
 
 // ===== 12. FUNCIONES DE RENDER =====
