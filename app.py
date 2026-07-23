@@ -11,9 +11,8 @@ import io
 import time
 from PIL import Image
 from moviepy import (
-    ImageClip, AudioFileClip, concatenate_videoclips, vfx,
+    ImageClip, AudioFileClip, concatenate_videoclips, vfx, afx,
 )
-from moviepy.audio.fx.all import fadeout as audio_fadeout
 
 # ===== CONFIG =====
 st.set_page_config(page_title="GIRO | Video Creator", page_icon="🎬", layout="wide")
@@ -170,7 +169,7 @@ if st.button("Crear Video", disabled=not can_render, type="primary", use_contain
                 audio = AudioFileClip(music_tmp.name)
                 if audio.duration > video.duration:
                     audio = audio.subclipped(0, video.duration)
-                audio = audio.with_effects([audio_fadeout(2.5)])
+                audio = audio.with_effects([afx.fadeout(2.5)])
                 video = video.with_audio(audio)
             progress_bar.progress(70)
 
