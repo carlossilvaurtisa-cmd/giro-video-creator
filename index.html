@@ -790,22 +790,33 @@ btnRender.addEventListener('click', () => {
 
 // ===== 11. RENDERIZADO DEL VIDEO =====
 
-// Usa exactamente las dimensiones de la primera foto (proporción 1:1)
-// Ajusta a números pares requeridos por H.264 (máximo ±1 píxel)
+// Usa la proporción exacta de la primera foto, optimizado para WhatsApp
+// Máximo 1280px en el lado más largo, ajusta a pares para H.264
 function getOutputDimensions(images) {
-  if (!images.length) return { W: 1920, H: 1080 };
+  if (!images.length) return { W: 1280, H: 720 };
   const img = images[0];
-  let W = img.naturalWidth || img.width;
-  let H = img.naturalHeight || img.height;
-  // H.264 requiere dimensiones pares — ajuste mínimo (±1 px)
-  if (W % 2 !== 0) W++;
-  if (H % 2 !== 0) H++;
-  return { W, H };
+  let iw = img.naturalWidth || img.width;
+  let ih = img.naturalHeight || img.height;
+
+  // Reducir a máximo 1280px en el lado más largo (óptimo WhatsApp)
+  const maxDim = 1280;
+  if (iw >= ih && iw > maxDim) {
+    ih = Math.round(ih * (maxDim / iw));
+    iw = maxDim;
+  } else if (ih > iw && ih > maxDim) {
+    iw = Math.round(iw * (maxDim / ih));
+    ih = maxDim;
+  }
+
+  // H.264 requiere dimensiones pares
+  if (iw % 2 !== 0) iw++;
+  if (ih % 2 !== 0) ih++;
+  return { W: iw, H: ih };
 }
 
-// Selecciona el mejor codec: H.264 MP4 primero, WebM como fallback
+// Selecciona el mejor codec: H.264 MP4 primero (WhatsApp), WebM como fallback
 function getBestCodec(hasAudio) {
-  // H.264 + AAC en MP4 (3 Mbps)
+  // H.264 + AAC en MP4
   if (hasAudio && MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
     return { mime: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', ext: 'mp4', label: 'H.264 MP4' };
   }
@@ -828,7 +839,7 @@ async function renderVideo() {
   progressText.textContent = 'Preparando...';
 
   const FPS = 30;
-  const BITRATE = 3000000; // 3 Mbps
+  const BITRATE = 2000000; // 2 Mbps — óptimo WhatsApp (<16 MB)
   const TRANS_DUR = state.transitionDuration;
 
   // Cargar imágenes primero para detectar proporción
