@@ -863,10 +863,12 @@ async function renderVideo() {
 
   let audioCtx = null;
   let audioSource = null;
+  let gainNode = null;
   let audioDest = null;
   let audioBuffer = null;
   let hasAudio = false;
 
+  // --- AUDIO SETUP (antes de crear el stream combinado) ---
   if (state.selectedTrackIdx >= 0 && state.selectedTrackIdx < state.musicTracks.length) {
     try {
       progressText.textContent = 'Cargando música...';
@@ -874,23 +876,36 @@ async function renderVideo() {
       const resp = await fetch(track.url);
       const arrayBuf = await resp.arrayBuffer();
       audioCtx = new AudioContext();
-      // Asegurar que el contexto esté activo (política de autoplay)
       if (audioCtx.state === 'suspended') await audioCtx.resume();
+
       audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+      if (!audioBuffer) throw new Error('AudioBuffer vacío');
+
+      // Crear nodos y conectar ANTES de obtener el track
       audioDest = audioCtx.createMediaStreamDestination();
+      gainNode = audioCtx.createGain();
+      gainNode.gain.value = 1;
+
+      audioSource = audioCtx.createBufferSource();
+      audioSource.buffer = audioBuffer;
+      audioSource.connect(gainNode);
+      gainNode.connect(audioDest);        // → grabación
+      gainNode.connect(audioCtx.destination); // → parlantes (preview)
+
       hasAudio = true;
     } catch (e) {
-      console.warn('Error al cargar audio:', e);
+      console.error('Error al cargar audio:', e);
       hasAudio = false;
     }
   }
 
+  // --- VIDEO STREAM ---
   const videoStream = canvas.captureStream(FPS);
   const videoTrack = videoStream.getVideoTracks()[0];
 
-  // Codec: H.264 MP4 (óptimo WhatsApp), con audio usa WebM que es más fiable
   const codec = getBestCodec(hasAudio);
 
+  // --- COMBINAR STREAMS (audio ya está conectado) ---
   let combinedStream;
   if (hasAudio && audioDest) {
     const audioTrack = audioDest.stream.getAudioTracks()[0];
@@ -899,6 +914,7 @@ async function renderVideo() {
     combinedStream = new MediaStream([videoTrack]);
   }
 
+  // --- MEDIA RECORDER ---
   const recorder = new MediaRecorder(combinedStream, {
     mimeType: codec.mime,
     videoBitsPerSecond: BITRATE,
@@ -907,39 +923,26 @@ async function renderVideo() {
 
   const chunks = [];
   recorder.ondataavailable = e => chunks.push(e.data);
-
   const recordingDone = new Promise(resolve => {
     recorder.onstop = () => resolve(chunks);
   });
 
   recorder.start(100);
 
-  // Variable para la sincronización audio-video
+  // --- ARRANCAR AUDIO (después de que el recorder está capturando) ---
   let audioStartTime = 0;
-
-  if (hasAudio && audioCtx && audioBuffer) {
-    // Nodo de ganancia para fade-out al final
-    const gainNode = audioCtx.createGain();
-    gainNode.gain.value = 1;
-
-    audioSource = audioCtx.createBufferSource();
-    audioSource.buffer = audioBuffer;
-    audioSource.connect(gainNode);
-    gainNode.connect(audioDest);
-    gainNode.connect(audioCtx.destination);
-
-    // Capturar tiempo de inicio y arrancar audio
+  if (hasAudio && audioSource && audioCtx) {
     audioStartTime = audioCtx.currentTime;
     audioSource.start(audioStartTime);
 
-    // Fade-out en los últimos 2.5 segundos del video
+    // Fade-out en los últimos 2.5 segundos
     const FADE_DUR = Math.min(2.5, totalDuration * 0.3);
     const fadeStart = Math.max(0, totalDuration - FADE_DUR);
     gainNode.gain.setValueAtTime(1, audioStartTime + fadeStart);
     gainNode.gain.linearRampToValueAtTime(0, audioStartTime + totalDuration);
   }
 
-  // Sincronizar video con el mismo reloj del audio
+  // Sincronizar video con el mismo reloj
   const startTime = hasAudio ? audioStartTime : performance.now() / 1000;
   let lastProgress = -1;
 
