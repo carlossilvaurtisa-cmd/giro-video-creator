@@ -868,34 +868,34 @@ async function renderVideo() {
   const totalDuration = timelineData[timelineData.length - 1].end;
 
   let audioCtx = null;
-  let audioSource = null;
+  let audioEl = null;       // Elemento <audio> nativo (más fiable)
   let gainNode = null;
   let audioDest = null;
-  let audioBuffer = null;
   let hasAudio = false;
 
-  // --- AUDIO SETUP (antes de crear el stream combinado) ---
+  // --- AUDIO SETUP vía elemento <audio> nativo (más robusto que AudioBuffer) ---
   if (state.selectedTrackIdx >= 0 && state.selectedTrackIdx < state.musicTracks.length) {
     try {
       progressText.textContent = 'Cargando música...';
       const track = state.musicTracks[state.selectedTrackIdx];
-      const resp = await fetch(track.url);
-      const arrayBuf = await resp.arrayBuffer();
+
       audioCtx = new AudioContext();
       if (audioCtx.state === 'suspended') await audioCtx.resume();
 
-      audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
-      if (!audioBuffer) throw new Error('AudioBuffer vacío');
+      // Usar elemento <audio> nativo — el navegador decodifica el MP3
+      audioEl = new Audio();
+      audioEl.src = track.url;
+      audioEl.loop = false;
 
-      // Crear nodos y conectar ANTES de obtener el track
+      // Conectar el audio element al grafo Web Audio (toma control del audio)
+      const mediaSource = audioCtx.createMediaElementSource(audioEl);
+
       audioDest = audioCtx.createMediaStreamDestination();
       gainNode = audioCtx.createGain();
       gainNode.gain.value = 1;
 
-      audioSource = audioCtx.createBufferSource();
-      audioSource.buffer = audioBuffer;
-      audioSource.connect(gainNode);
-      gainNode.connect(audioDest);        // → grabación
+      mediaSource.connect(gainNode);
+      gainNode.connect(audioDest);           // → grabación
       gainNode.connect(audioCtx.destination); // → parlantes (preview)
 
       hasAudio = true;
@@ -911,7 +911,7 @@ async function renderVideo() {
 
   const codec = getBestCodec(hasAudio);
 
-  // --- COMBINAR STREAMS (audio ya está conectado) ---
+  // --- COMBINAR STREAMS ---
   let combinedStream;
   if (hasAudio && audioDest) {
     const audioTrack = audioDest.stream.getAudioTracks()[0];
@@ -935,11 +935,11 @@ async function renderVideo() {
 
   recorder.start(100);
 
-  // --- ARRANCAR AUDIO (después de que el recorder está capturando) ---
+  // --- ARRANCAR REPRODUCCIÓN DE AUDIO ---
   let audioStartTime = 0;
-  if (hasAudio && audioSource && audioCtx) {
+  if (hasAudio && audioEl && audioCtx) {
     audioStartTime = audioCtx.currentTime;
-    audioSource.start(audioStartTime);
+    await audioEl.play();  // El audio fluye por el grafo Web Audio
 
     // Fade-out en los últimos 2.5 segundos
     const FADE_DUR = Math.min(2.5, totalDuration * 0.3);
@@ -956,7 +956,7 @@ async function renderVideo() {
     function renderLoop() {
       if (!state.isRendering) {
         recorder.stop();
-        if (audioSource) audioSource.stop();
+        if (audioEl) audioEl.pause();
         resolve();
         return;
       }
@@ -975,7 +975,7 @@ async function renderVideo() {
 
       if (elapsed >= totalDuration) {
         recorder.stop();
-        if (audioSource) { try { audioSource.stop(); } catch(e) {} }
+        if (audioEl) { audioEl.pause(); }
         resolve();
         return;
       }
