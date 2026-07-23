@@ -1007,10 +1007,9 @@ async function renderVideo() {
     audioEncodeDone = true;
   }
 
-  // --- LOOP DE RENDER + ENCODIFICACIÓN DE VIDEO ---
+  // --- LOOP DE RENDER + ENCODIFICACIÓN (simplificado, sin trabas) ---
   const startTime = performance.now() / 1000;
   let frameIdx = 0;
-  let lastEncodedTime = -1;
   let lastProgress = -1;
 
   await new Promise(resolve => {
@@ -1022,41 +1021,34 @@ async function renderVideo() {
       if (pct !== lastProgress) {
         lastProgress = pct;
         progressFill.style.width = pct + '%';
-        progressText.textContent = `Renderizando H.264... ${pct}% (quedan ~${Math.max(0,Math.round(totalDuration-elapsed))}s)`;
+        const rem = Math.max(0, Math.round(totalDuration - elapsed));
+        progressText.textContent = `Renderizando H.264... ${pct}% (quedan ~${rem}s)`;
       }
 
-      // Dibujar frame actual
-      drawFrame(ctx, images, timelineData, Math.min(elapsed, totalDuration), W, H);
+      // Dibujar y encodificar frames pendientes
+      while (frameIdx < totalFrames) {
+        const frameTime = frameIdx / FPS;
+        if (frameTime > elapsed) break; // aún no toca este frame
+        if (videoEncoderError) { resolve(); return; }
 
-      // Encodificar a 30fps
-      const frameTime = frameIdx / FPS;
-      if (elapsed >= frameTime && frameIdx < totalFrames) {
-        if (videoEncoderError) {
-          toast('⚠️ Error en codificación H.264', 'error');
-          resolve(); return;
-        }
-        if (videoEncoder.encodeQueueSize < 5) {
-          const vf = new VideoFrame(canvas, {
-            timestamp: Math.round(frameTime * 1_000_000),
-            duration: Math.round(1 / FPS * 1_000_000),
-          });
-          videoEncoder.encode(vf, { keyFrame: frameIdx % 30 === 0 });
-          vf.close();
-          lastEncodedTime = frameTime;
-          frameIdx++;
-        }
+        drawFrame(ctx, images, timelineData, frameTime, W, H);
+        const vf = new VideoFrame(canvas, {
+          timestamp: Math.round(frameTime * 1_000_000),
+          duration: Math.round(1 / FPS * 1_000_000),
+        });
+        videoEncoder.encode(vf, { keyFrame: frameIdx % 30 === 0 });
+        vf.close();
+        frameIdx++;
       }
 
-      if (elapsed >= totalDuration && frameIdx >= totalFrames) {
-        // Ya terminamos todos los frames
-        resolve();
-        return;
+      // ¿Terminamos?
+      if (frameIdx >= totalFrames) {
+        resolve(); return;
       }
 
-      if (elapsed >= totalDuration + 2) {
-        // Timeout de seguridad
-        resolve();
-        return;
+      // Timeout de seguridad: si pasa 3s extra, cortar
+      if (elapsed > totalDuration + 3) {
+        resolve(); return;
       }
 
       requestAnimationFrame(renderLoop);
