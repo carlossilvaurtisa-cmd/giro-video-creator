@@ -814,18 +814,22 @@ function getOutputDimensions(images) {
   return { W: iw, H: ih };
 }
 
-// Selecciona el mejor codec: H.264 MP4 primero (WhatsApp), WebM como fallback
+// Selecciona el mejor codec. Con audio: WebM (más fiable en navegadores).
+// Sin audio: H.264 MP4 (óptimo WhatsApp). Ambos compatibles con WhatsApp.
 function getBestCodec(hasAudio) {
-  // H.264 + AAC en MP4
-  if (hasAudio && MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
-    return { mime: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', ext: 'mp4', label: 'H.264 MP4' };
+  if (hasAudio) {
+    // WebM es el más fiable para audio+video combinado en todos los navegadores
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+      return { mime: 'video/webm;codecs=vp8,opus', ext: 'webm', label: 'WebM VP8+Opus' };
+    }
+    return { mime: 'video/webm', ext: 'webm', label: 'WebM' };
   }
+  // Sin audio: H.264 MP4 (más ligero, ideal WhatsApp)
   if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E')) {
     return { mime: 'video/mp4;codecs=avc1.42E01E', ext: 'mp4', label: 'H.264 MP4' };
   }
-  // WebM VP8 + Opus (fallback)
-  if (hasAudio && MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-    return { mime: 'video/webm;codecs=vp8,opus', ext: 'webm', label: 'VP8 WebM' };
+  if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+    return { mime: 'video/webm;codecs=vp8', ext: 'webm', label: 'WebM VP8' };
   }
   return { mime: 'video/webm', ext: 'webm', label: 'WebM' };
 }
@@ -870,6 +874,8 @@ async function renderVideo() {
       const resp = await fetch(track.url);
       const arrayBuf = await resp.arrayBuffer();
       audioCtx = new AudioContext();
+      // Asegurar que el contexto esté activo (política de autoplay)
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
       audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
       audioDest = audioCtx.createMediaStreamDestination();
       hasAudio = true;
@@ -882,6 +888,9 @@ async function renderVideo() {
   const videoStream = canvas.captureStream(FPS);
   const videoTrack = videoStream.getVideoTracks()[0];
 
+  // Codec: H.264 MP4 (óptimo WhatsApp), con audio usa WebM que es más fiable
+  const codec = getBestCodec(hasAudio);
+
   let combinedStream;
   if (hasAudio && audioDest) {
     const audioTrack = audioDest.stream.getAudioTracks()[0];
@@ -889,9 +898,6 @@ async function renderVideo() {
   } else {
     combinedStream = new MediaStream([videoTrack]);
   }
-
-  // Codec: H.264 a 3 Mbps preferido, WebM como fallback
-  const codec = getBestCodec(hasAudio);
 
   const recorder = new MediaRecorder(combinedStream, {
     mimeType: codec.mime,
@@ -908,6 +914,9 @@ async function renderVideo() {
 
   recorder.start(100);
 
+  // Variable para la sincronización audio-video
+  let audioStartTime = 0;
+
   if (hasAudio && audioCtx && audioBuffer) {
     // Nodo de ganancia para fade-out al final
     const gainNode = audioCtx.createGain();
@@ -918,17 +927,20 @@ async function renderVideo() {
     audioSource.connect(gainNode);
     gainNode.connect(audioDest);
     gainNode.connect(audioCtx.destination);
-    audioSource.start(audioCtx.currentTime);
+
+    // Capturar tiempo de inicio y arrancar audio
+    audioStartTime = audioCtx.currentTime;
+    audioSource.start(audioStartTime);
 
     // Fade-out en los últimos 2.5 segundos del video
     const FADE_DUR = Math.min(2.5, totalDuration * 0.3);
     const fadeStart = Math.max(0, totalDuration - FADE_DUR);
-    const now = audioCtx.currentTime;
-    gainNode.gain.setValueAtTime(1, now + fadeStart);
-    gainNode.gain.linearRampToValueAtTime(0, now + totalDuration);
+    gainNode.gain.setValueAtTime(1, audioStartTime + fadeStart);
+    gainNode.gain.linearRampToValueAtTime(0, audioStartTime + totalDuration);
   }
 
-  const startTime = hasAudio ? audioCtx.currentTime : performance.now() / 1000;
+  // Sincronizar video con el mismo reloj del audio
+  const startTime = hasAudio ? audioStartTime : performance.now() / 1000;
   let lastProgress = -1;
 
   await new Promise(resolve => {
