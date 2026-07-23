@@ -906,8 +906,6 @@ async function renderVideo() {
   const videoStream = canvas.captureStream(FPS);
   const videoTrack = videoStream.getVideoTracks()[0];
 
-  const codec = getBestCodec(hasAudio);
-
   // --- COMBINAR STREAMS ---
   let combinedStream;
   if (hasAudio && audioDest) {
@@ -917,12 +915,20 @@ async function renderVideo() {
     combinedStream = new MediaStream([videoTrack]);
   }
 
-  // --- MEDIA RECORDER ---
-  const recorder = new MediaRecorder(combinedStream, {
-    mimeType: codec.mime,
+  // --- MEDIA RECORDER (sin codecs forzados — el navegador elige lo más fiable) ---
+  const recOpts = {
     videoBitsPerSecond: BITRATE,
-    audioBitsPerSecond: hasAudio ? 128000 : undefined,
-  });
+  };
+  if (hasAudio) recOpts.audioBitsPerSecond = 128000;
+  // Solo sugerir MIME si está soportado, sin forzar codecs específicos
+  if (MediaRecorder.isTypeSupported('video/webm')) {
+    recOpts.mimeType = 'video/webm';
+  }
+
+  const recorder = new MediaRecorder(combinedStream, recOpts);
+  const actualMime = recorder.mimeType || 'video/webm';
+  const ext = actualMime.includes('mp4') ? 'mp4' : 'webm';
+  const label = actualMime.includes('mp4') ? 'H.264 MP4' : (actualMime.includes('vp9') ? 'WebM VP9' : 'WebM');
 
   const chunks = [];
   recorder.ondataavailable = e => chunks.push(e.data);
@@ -967,7 +973,7 @@ async function renderVideo() {
         lastProgress = progressPct;
         progressFill.style.width = progressPct + '%';
         const remaining = Math.max(0, Math.round(totalDuration - elapsed));
-        progressText.textContent = `Renderizando ${codec.label}... ${progressPct}% (quedan ~${remaining}s)`;
+        progressText.textContent = `Renderizando ${label}... ${progressPct}% (quedan ~${remaining}s)`;
       }
 
       if (elapsed >= totalDuration) {
@@ -987,11 +993,11 @@ async function renderVideo() {
 
   if (audioCtx) await audioCtx.close();
 
-  const blob = new Blob(recordedChunks, { type: codec.mime });
+  const blob = new Blob(recordedChunks, { type: actualMime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'giro_video_' + Date.now() + '.' + codec.ext;
+  a.download = 'giro_video_' + Date.now() + '.' + ext;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1001,7 +1007,7 @@ async function renderVideo() {
   btnRender.disabled = false;
   btnRender.innerHTML = '<span>🎬</span> Crear Video';
   progressWrap.classList.remove('active');
-  toast('✅ ¡Video creado! (' + codec.label + ', ' + W + '×' + H + ', 3 Mbps)');
+  toast('✅ ¡Video creado! (' + label + ', ' + W + '×' + H + ', 2 Mbps)');
 }
 
 // ===== 12. FUNCIONES DE RENDER =====
