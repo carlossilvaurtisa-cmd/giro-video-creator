@@ -19,9 +19,6 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 BASE_DIR = os.path.join(tempfile.gettempdir(), 'giro_video_creator')
 os.makedirs(BASE_DIR, exist_ok=True)
 
-# Render async
-render_tasks = {}
-
 def get_user_dir():
     if 'user_id' not in session:
         session['user_id'] = uuid.uuid4().hex[:12]
@@ -39,17 +36,21 @@ def save_user_data(data):
     with open(os.path.join(get_user_dir(), 'data.json'), 'w') as f:
         json.dump(data, f)
 
+# ===== RENDER ASYNC (estado en archivo → compatible con gunicorn workers) =====
 def _render_thread(user_dir, task_id):
-    """Render en background"""
     dp = os.path.join(user_dir, 'data.json')
     with open(dp) as f: data = json.load(f)
     out = os.path.join(user_dir, 'output.mp4')
+    sp = os.path.join(user_dir, 'render_status.json')
     tmp = []
+    def ss(s):
+        with open(sp, 'w') as f: json.dump(s, f)
     try:
+        ss({'status':'processing'})
         durations = [p['duration'] for p in data['photos']]
         img0 = Image.open(os.path.join(user_dir, f"{data['photos'][0]['id']}.jpg"))
         W, H = img0.size
-        mx = 1280
+        mx = 720
         if W >= H and W > mx: H = int(H*mx/W); W = mx
         elif H > W and H > mx: W = int(W*mx/H); H = mx
         if W%2: W+=1
@@ -68,20 +69,20 @@ def _render_thread(user_dir, task_id):
         video = concatenate_videoclips(clips, method="compose")
         if data['music']:
             mp = os.path.join(user_dir, data['music'])
-            if not os.path.exists(mp) and data.get('music_source') == 'library':
+            if not os.path.exists(mp) and data.get('music_source')=='library':
                 mp = os.path.join(app.static_folder, 'musica', data['music'])
             if os.path.exists(mp):
                 a = AudioFileClip(mp)
                 if a.duration > video.duration: a = a.subclipped(0, video.duration)
                 video = video.with_audio(a)
         video.write_videofile(out, codec='libx264', audio_codec='aac',
-                              bitrate='2000k', fps=30, preset='ultrafast',
+                              bitrate='1500k', fps=24, preset='ultrafast',
                               threads=2, logger=None)
         sz = os.path.getsize(out)
-        render_tasks[task_id] = {'status':'done','size_mb':round(sz/(1024*1024),1),
-                                  'has_audio':bool(data['music']),'width':W,'height':H}
+        ss({'status':'done','size_mb':round(sz/(1024*1024),1),
+            'has_audio':bool(data['music']),'width':W,'height':H})
     except Exception as e:
-        render_tasks[task_id] = {'status':'error','error':str(e)}
+        ss({'status':'error','error':str(e)})
     finally:
         for fp in tmp:
             try: os.remove(fp)
@@ -141,42 +142,39 @@ def set_durations():
 
 @app.route('/api/music-library')
 def music_library():
-    """Lista los MP3 disponibles en static/musica/"""
     lib_dir = os.path.join(app.static_folder, 'musica')
     tracks = []
     if os.path.exists(lib_dir):
         for f in sorted(os.listdir(lib_dir)):
             if f.endswith('.mp3'):
                 name = f.replace('.mp3','').replace('_',' ').replace('-',' ')
-                tracks.append({'filename': f, 'name': name.title()})
-    return jsonify({'tracks': tracks})
+                tracks.append({'filename':f,'name':name.title()})
+    return jsonify({'tracks':tracks})
 
 @app.route('/api/select-library-music', methods=['POST'])
 def select_library_music():
-    """Selecciona un tema de la biblioteca"""
     data = get_user_data()
     filename = request.json.get('filename')
     lib_path = os.path.join(app.static_folder, 'musica', filename)
     if not os.path.exists(lib_path):
-        return jsonify({'error': 'Tema no encontrado'}), 404
-    
-    # Si había música subida, eliminarla
+        return jsonify({'error':'Tema no encontrado'}),404
     user_dir = get_user_dir()
-    if data['music'] and os.path.exists(os.path.join(user_dir, data['music'])):
+    if data['music'] and data.get('music_source')!='library' and \
+       os.path.exists(os.path.join(user_dir, data['music'])):
         os.remove(os.path.join(user_dir, data['music']))
-    
     data['music'] = filename
-    data['music_name'] = '🎵 ' + filename.replace('.mp3','').replace('_',' ').replace('-',' ').title()
+    data['music_name'] = '🎵 '+filename.replace('.mp3','').replace('_',' ').replace('-',' ').title()
     data['music_source'] = 'library'
     save_user_data(data)
-    return jsonify({'status': 'ok', 'music_name': data['music_name']})
+    return jsonify({'status':'ok','music_name':data['music_name']})
+
 @app.route('/api/upload-music', methods=['POST'])
 def upload_music():
     user_dir = get_user_dir()
     data = get_user_data()
     f = request.files.get('music')
     if f and f.filename:
-        if data['music'] and data.get('music_source') != 'library' and \
+        if data['music'] and data.get('music_source')!='library' and \
            os.path.exists(os.path.join(user_dir, data['music'])):
             os.remove(os.path.join(user_dir, data['music']))
         fn = f'music_{uuid.uuid4().hex[:6]}.mp3'
@@ -190,7 +188,7 @@ def upload_music():
 def remove_music():
     user_dir = get_user_dir()
     data = get_user_data()
-    if data['music'] and data.get('music_source') != 'library':
+    if data['music'] and data.get('music_source')!='library':
         fp = os.path.join(user_dir, data['music'])
         if os.path.exists(fp): os.remove(fp)
     data['music'] = None; data['music_name'] = None
@@ -219,18 +217,21 @@ def render_video():
     data = get_user_data()
     if len(data['photos'])<2:
         return jsonify({'error':'Necesitás al menos 2 fotos'}),400
-    
     task_id = uuid.uuid4().hex[:8]
-    render_tasks[task_id] = {'status':'processing'}
-    t = threading.Thread(target=_render_thread, args=(get_user_dir(), task_id))
+    user_dir = get_user_dir()
+    # Guardar task_id en el estado inicial
+    with open(os.path.join(user_dir, 'render_status.json'), 'w') as f:
+        json.dump({'status':'processing','task_id':task_id}, f)
+    t = threading.Thread(target=_render_thread, args=(user_dir, task_id))
     t.start()
     return jsonify({'status':'processing','task_id':task_id})
 
-@app.route('/api/render-status/<task_id>')
-def render_status(task_id):
-    task = render_tasks.get(task_id)
-    if not task: return jsonify({'status':'not_found'}),404
-    return jsonify(task)
+@app.route('/api/render-status')
+def render_status():
+    sp = os.path.join(get_user_dir(), 'render_status.json')
+    if os.path.exists(sp):
+        with open(sp) as f: return jsonify(json.load(f))
+    return jsonify({'status':'not_found'}),404
 
 @app.route('/api/download/output.mp4')
 def download_video():

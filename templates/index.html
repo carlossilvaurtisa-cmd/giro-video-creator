@@ -241,7 +241,7 @@ body {
       <a class="btn btn-primary" id="btnDownload" href="#" download>⬇️ Descargar Video</a>
     </div>
 
-    <div class="btn-row" id="exportBack">
+    <div class="btn-row hidden" id="exportBack">
       <button class="btn btn-secondary" onclick="goToStep(3)">← Atrás</button>
       <button class="btn btn-secondary" onclick="resetAll()">🔄 Empezar de nuevo</button>
     </div>
@@ -511,6 +511,7 @@ async function loadExport() {
   `;
   
   document.getElementById('exportActions').classList.remove('hidden');
+  document.getElementById('exportBack').classList.remove('hidden');
   document.getElementById('resultSection').classList.remove('active');
   document.getElementById('renderProgress').classList.remove('active');
 }
@@ -524,29 +525,29 @@ async function renderVideo() {
   const text = document.getElementById('progressText');
   
   try {
-    // Iniciar render
     text.textContent = 'Iniciando render...';
     const resp = await fetch('/api/render', { method: 'POST' });
     if (!resp.ok) {
       const err = await resp.json();
       throw new Error(err.error || 'Error ' + resp.status);
     }
-    const { task_id } = await resp.json();
     
     // Poll hasta que termine
-    for (let i = 0; i < 120; i++) {
-      await new Promise(r => setTimeout(r, 1500));
-      const statusResp = await fetch('/api/render-status/' + task_id);
+    for (let i = 0; i < 180; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const statusResp = await fetch('/api/render-status');
+      if (!statusResp.ok) continue;
       const status = await statusResp.json();
       
       if (status.status === 'done') {
         fill.style.width = '100%';
-        text.textContent = '✅ ¡Listo! MP4' + (status.has_audio?' + música':'') + ' · ' + status.size_mb + ' MB';
+        text.textContent = '✅ ¡Listo! MP4' + (status.has_audio?' + música':'') + ' · ' + status.size_mb + ' MB · ' + status.width + '×' + status.height;
         
         const video = document.getElementById('resultVideo');
         video.src = '/api/download/output.mp4?' + Date.now();
         document.getElementById('btnDownload').href = video.src;
         document.getElementById('resultSection').classList.add('active');
+        document.getElementById('exportBack').classList.remove('hidden');
         return;
       }
       
@@ -554,16 +555,16 @@ async function renderVideo() {
         throw new Error(status.error);
       }
       
-      // Actualizar progreso
-      const pct = Math.min(95, 10 + i * 3);
+      const pct = Math.min(90, 10 + i);
       fill.style.width = pct + '%';
-      text.textContent = 'Renderizando H.264 MP4...';
+      text.textContent = 'Renderizando H.264 MP4... (~' + (i*2) + 's)';
     }
     throw new Error('Timeout: el render tomó demasiado tiempo');
     
   } catch(e) {
     text.textContent = 'Error: ' + e.message;
     toast('Error al renderizar: ' + e.message, true);
+    document.getElementById('exportBack').classList.remove('hidden');
   }
 }
 
