@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GIRO | Video Creator</title>
+<style>
+/* ===== GIRO BRAND — Manual de Marca 2024 ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --rojo: #F32624; --rojo-h: #d41f1d; --gris: #636363;
+  --gris-c: #4a4a4a; --gris-l: #f5f5f5; --gris-b: #e0e0e0;
+  --blanco: #FFFFFF; --negro: #000000;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --radius: 8px; --shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+
+body {
+  font-family: var(--font); background: var(--blanco);
+  color: var(--negro); min-height: 100vh; line-height: 1.5;
+}
+
+/* ===== HEADER ===== */
+.app-header {
+  background: var(--blanco); border-bottom: 3px solid var(--rojo);
+  padding: 14px 28px; display: flex; align-items: center; gap: 12px;
+  box-shadow: var(--shadow);
+}
+.app-header .logo { font-size: 24px; font-weight: 700; color: var(--rojo); letter-spacing: -0.5px; }
+.app-header h1 { font-size: 16px; font-weight: 400; color: var(--gris-c);
+  border-left: 2px solid var(--gris-b); padding-left: 14px; }
+.app-header .step-info { margin-left: auto; font-size: 13px; color: var(--gris); }
+
+/* ===== MAIN ===== */
+.app-main { max-width: 900px; margin: 0 auto; padding: 28px 24px; }
+
+/* ===== PROGRESS BAR ===== */
+.progress-bar-wrap { display: flex; gap: 6px; margin-bottom: 28px; }
+.progress-segment { flex: 1; height: 4px; background: var(--gris-b); border-radius: 2px; transition: background 0.3s; }
+.progress-segment.done { background: var(--rojo); opacity: 0.3; }
+.progress-segment.active { background: var(--rojo); }
+
+/* ===== CARD ===== */
+.card {
+  background: var(--blanco); border: 1px solid var(--gris-b);
+  border-radius: var(--radius); padding: 28px; box-shadow: var(--shadow);
+}
+
+/* ===== UPLOAD ZONE ===== */
+.upload-zone {
+  border: 2px dashed var(--gris-b); border-radius: var(--radius);
+  padding: 36px 20px; text-align: center; cursor: pointer;
+  background: #fafafa; transition: all 0.2s;
+}
+.upload-zone:hover, .upload-zone.drag-over { border-color: var(--rojo); background: #fef5f5; }
+.upload-zone .icon { font-size: 32px; display: block; margin-bottom: 6px; }
+.upload-zone p { color: var(--gris); font-size: 14px; }
+
+/* ===== PHOTO GRID ===== */
+.photo-grid { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.photo-item {
+  width: 120px; flex-shrink: 0; background: var(--blanco);
+  border: 2px solid var(--gris-b); border-radius: 6px;
+  overflow: hidden; text-align: center; position: relative;
+}
+.photo-item img { width: 100%; height: 80px; object-fit: cover; display: block; }
+.photo-item .num {
+  position: absolute; top: 4px; left: 4px;
+  background: var(--rojo); color: white; width: 20px; height: 20px;
+  border-radius: 50%; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.photo-item .name { font-size: 10px; color: var(--gris); padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.photo-item .btns { display: flex; gap: 2px; padding: 0 4px 6px 4px; justify-content: center; }
+.photo-item .btns button {
+  width: 22px; height: 22px; border: 1px solid var(--gris-b);
+  background: var(--blanco); border-radius: 4px; cursor: pointer;
+  font-size: 10px; color: var(--gris-c); transition: all 0.15s;
+}
+.photo-item .btns button:hover { border-color: var(--rojo); color: var(--rojo); }
+.photo-item .btns button.del:hover { background: var(--rojo); color: white; border-color: var(--rojo); }
+
+/* ===== BUTTONS ===== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 24px; border: none; border-radius: 6px;
+  font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  font-family: var(--font);
+}
+.btn-primary { background: var(--rojo); color: white; }
+.btn-primary:hover { background: var(--rojo-h); }
+.btn-secondary { background: var(--blanco); color: var(--gris-c); border: 1px solid var(--gris-b); }
+.btn-secondary:hover { border-color: var(--rojo); color: var(--rojo); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-row { display: flex; gap: 10px; margin-top: 20px; }
+
+/* ===== DURATION ===== */
+.duration-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.duration-item { display: flex; align-items: center; gap: 12px; padding: 10px;
+  background: var(--gris-l); border-radius: 6px; }
+.duration-item img { width: 60px; height: 45px; object-fit: cover; border-radius: 4px; }
+.duration-item .name { flex: 1; font-weight: 600; font-size: 14px; }
+.duration-item select { padding: 6px 10px; border: 1px solid var(--gris-b); border-radius: 4px;
+  font-family: var(--font); font-size: 13px; }
+
+/* ===== MUSIC ===== */
+.music-section { margin-top: 16px; }
+.music-player { margin-top: 12px; padding: 12px; background: var(--gris-l); border-radius: 6px; display: flex; align-items: center; gap: 12px; }
+.music-player .info { flex: 1; font-size: 14px; }
+
+/* ===== EXPORT ===== */
+.export-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+.export-stat { text-align: center; padding: 16px; background: var(--gris-l); border-radius: 6px; }
+.export-stat .val { font-size: 24px; font-weight: 700; color: var(--rojo); }
+.export-stat .lbl { font-size: 12px; color: var(--gris); margin-top: 2px; }
+
+/* ===== PROGRESS ===== */
+.render-progress { display: none; margin-top: 16px; }
+.render-progress.active { display: block; }
+.render-progress .bar { height: 8px; background: var(--gris-l); border-radius: 4px; overflow: hidden; }
+.render-progress .fill { height: 100%; background: var(--rojo); border-radius: 4px; width: 0%; transition: width 0.3s; }
+.render-progress .text { font-size: 13px; color: var(--gris); margin-top: 6px; }
+
+/* ===== RESULT ===== */
+.result-section { display: none; margin-top: 20px; }
+.result-section.active { display: block; }
+.result-section video { width: 100%; max-width: 400px; border-radius: 8px; margin-bottom: 12px; }
+
+/* ===== TOAST ===== */
+.toast {
+  position: fixed; bottom: 20px; right: 20px;
+  background: var(--blanco); border-left: 4px solid var(--rojo);
+  padding: 12px 20px; border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  font-size: 14px; z-index: 999; animation: slideIn 0.3s;
+}
+.toast.error { border-left-color: #ef4444; }
+@keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* ===== HIDDEN ===== */
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <span class="logo">GIRO</span>
+  <h1>Video Creator</h1>
+  <span class="step-info" id="stepInfo">Paso 1 de 4</span>
+</header>
+
+<main class="app-main">
+
+  <!-- PROGRESS BAR -->
+  <div class="progress-bar-wrap" id="progressBar">
+    <div class="progress-segment active" data-step="1"></div>
+    <div class="progress-segment" data-step="2"></div>
+    <div class="progress-segment" data-step="3"></div>
+    <div class="progress-segment" data-step="4"></div>
+  </div>
+
+  <!-- STEP 1: PHOTOS -->
+  <div class="card" id="step1">
+    <h2>📸 Subí tus fotos</h2>
+    <p style="color:var(--gris);font-size:14px;margin-bottom:12px;">Las fotos aparecerán en el orden que las organices.</p>
+    
+    <div class="upload-zone" id="uploadZone">
+      <span class="icon">🖼️</span>
+      <p>Arrastrá imágenes aquí o hacé clic</p>
+      <p style="font-size:11px;margin-top:4px;">JPG, PNG, WebP</p>
+    </div>
+    <input type="file" id="photoInput" accept="image/*" multiple hidden>
+
+    <div class="photo-grid" id="photoGrid"></div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnStep1Next" disabled onclick="goToStep(2)">Siguiente →</button>
+    </div>
+  </div>
+
+  <!-- STEP 2: DURATION -->
+  <div class="card hidden" id="step2">
+    <h2>⏱️ Duración de cada foto</h2>
+    <p style="color:var(--gris);font-size:14px;margin-bottom:12px;">Elegí cuántos segundos se muestra cada imagen.</p>
+    <div class="duration-list" id="durationList"></div>
+    <p style="font-size:13px;color:var(--gris);margin-top:8px;" id="totalDuration"></p>
+
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goToStep(1)">← Atrás</button>
+      <button class="btn btn-primary" onclick="saveDurations()">Siguiente →</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: MUSIC -->
+  <div class="card hidden" id="step3">
+    <h2>🎵 Música de fondo</h2>
+    <p style="color:var(--gris);font-size:14px;margin-bottom:12px;">Agregá un MP3 (opcional).</p>
+    
+    <div class="upload-zone" id="musicZone" style="padding:24px;">
+      <span class="icon">🎼</span>
+      <p>Subir archivo MP3</p>
+    </div>
+    <input type="file" id="musicInput" accept="audio/mpeg,.mp3" hidden>
+    
+    <div class="music-player hidden" id="musicPlayer">
+      <span>🎵</span>
+      <span class="info" id="musicName"></span>
+      <button class="btn btn-secondary" onclick="removeMusic()" style="padding:6px 12px;font-size:12px;">Quitar</button>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goToStep(2)">← Atrás</button>
+      <button class="btn btn-primary" onclick="goToStep(4)">Siguiente →</button>
+    </div>
+  </div>
+
+  <!-- STEP 4: EXPORT -->
+  <div class="card hidden" id="step4">
+    <h2>🎬 Exportar Video</h2>
+    
+    <div class="export-summary" id="exportSummary"></div>
+    
+    <div id="exportActions">
+      <button class="btn btn-primary" id="btnRender" onclick="renderVideo()">Renderizar Video</button>
+    </div>
+
+    <div class="render-progress" id="renderProgress">
+      <div class="bar"><div class="fill" id="progressFill"></div></div>
+      <p class="text" id="progressText">Preparando...</p>
+    </div>
+
+    <div class="result-section" id="resultSection">
+      <video id="resultVideo" controls></video>
+      <a class="btn btn-primary" id="btnDownload" href="#" download>⬇️ Descargar Video</a>
+    </div>
+
+    <div class="btn-row" id="exportBack">
+      <button class="btn btn-secondary" onclick="goToStep(3)">← Atrás</button>
+      <button class="btn btn-secondary" onclick="resetAll()">🔄 Empezar de nuevo</button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ========================
+// STATE
+// ========================
+let currentStep = 1;
+let photos = [];
+let musicName = null;
+
+// ========================
+// NAVIGATION
+// ========================
+function goToStep(step) {
+  document.querySelectorAll('.card').forEach(c => c.classList.add('hidden'));
+  document.getElementById('step' + step).classList.remove('hidden');
+  currentStep = step;
+  document.getElementById('stepInfo').textContent = 'Paso ' + step + ' de 4';
+  
+  // Update progress bar
+  document.querySelectorAll('.progress-segment').forEach(seg => {
+    const s = parseInt(seg.dataset.step);
+    seg.classList.remove('active', 'done');
+    if (s < step) seg.classList.add('done');
+    if (s === step) seg.classList.add('active');
+  });
+  
+  if (step === 2) loadDurations();
+  if (step === 4) loadExport();
+}
+
+// ========================
+// STEP 1: PHOTOS
+// ========================
+const uploadZone = document.getElementById('uploadZone');
+const photoInput = document.getElementById('photoInput');
+const photoGrid = document.getElementById('photoGrid');
+
+uploadZone.addEventListener('click', () => photoInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag-over');
+  uploadPhotos(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
+});
+photoInput.addEventListener('change', () => {
+  uploadPhotos(Array.from(photoInput.files));
+  photoInput.value = '';
+});
+
+async function uploadPhotos(files) {
+  if (!files.length) return;
+  const form = new FormData();
+  files.forEach(f => form.append('photos', f));
+  
+  const resp = await fetch('/api/upload-photos', { method: 'POST', body: form });
+  const data = await resp.json();
+  photos = data.photos;
+  renderPhotoGrid();
+  document.getElementById('btnStep1Next').disabled = photos.length < 2;
+}
+
+function renderPhotoGrid() {
+  photoGrid.innerHTML = photos.map((p, i) => `
+    <div class="photo-item" draggable="true" data-id="${p.id}" data-idx="${i}">
+      <div class="num">${i+1}</div>
+      <img src="/api/photo/${p.id}.jpg" alt="${p.name}">
+      <div class="name">${p.name}</div>
+      <div class="btns">
+        <button ${i===0?'disabled':''} onclick="movePhoto('${p.id}',-1)" title="Izquierda">◀</button>
+        <button class="del" onclick="deletePhoto('${p.id}')" title="Eliminar">✕</button>
+        <button ${i===photos.length-1?'disabled':''} onclick="movePhoto('${p.id}',1)" title="Derecha">▶</button>
+      </div>
+    </div>
+  `).join('');
+  document.getElementById('btnStep1Next').disabled = photos.length < 2;
+}
+
+async function movePhoto(id, dir) {
+  const idx = photos.findIndex(p => p.id === id);
+  if (idx + dir < 0 || idx + dir >= photos.length) return;
+  [photos[idx], photos[idx + dir]] = [photos[idx + dir], photos[idx]];
+  await fetch('/api/reorder-photos', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ order: photos.map(p => p.id) }),
+  });
+  renderPhotoGrid();
+}
+
+async function deletePhoto(id) {
+  const resp = await fetch('/api/remove-photo', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ id }),
+  });
+  const data = await resp.json();
+  photos = data.photos;
+  renderPhotoGrid();
+  document.getElementById('btnStep1Next').disabled = photos.length < 2;
+}
+
+// ========================
+// STEP 2: DURATIONS
+// ========================
+async function loadDurations() {
+  // Asegurar que photos esté actualizado
+  const resp = await fetch('/api/get-data');
+  const data = await resp.json();
+  photos = data.photos;
+  
+  const list = document.getElementById('durationList');
+  list.innerHTML = photos.map(p => `
+    <div class="duration-item">
+      <img src="/api/photo/${p.id}.jpg" alt="${p.name}">
+      <span class="name">${p.name}</span>
+      <select onchange="updateDuration('${p.id}', this.value)">
+        <option value="5" ${p.duration===5?'selected':''}>5 segundos</option>
+        <option value="8" ${p.duration===8?'selected':''}>8 segundos</option>
+        <option value="10" ${p.duration===10?'selected':''}>10 segundos</option>
+      </select>
+    </div>
+  `).join('');
+  
+  updateTotalDuration();
+}
+
+function updateDuration(id, val) {
+  const p = photos.find(p => p.id === id);
+  if (p) p.duration = parseInt(val);
+  updateTotalDuration();
+}
+
+function updateTotalDuration() {
+  const total = photos.reduce((s, p) => s + p.duration, 0);
+  const trans = 0.8 * Math.max(0, photos.length - 1);
+  document.getElementById('totalDuration').textContent = 
+    `⏱️ Duración total: ~${Math.round(total + trans)} segundos`;
+}
+
+async function saveDurations() {
+  const durations = {};
+  photos.forEach(p => durations[p.id] = p.duration);
+  await fetch('/api/set-durations', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ durations }),
+  });
+  goToStep(3);
+}
+
+// ========================
+// STEP 3: MUSIC
+// ========================
+const musicZone = document.getElementById('musicZone');
+const musicInput = document.getElementById('musicInput');
+
+musicZone.addEventListener('click', () => musicInput.click());
+musicInput.addEventListener('change', async () => {
+  const file = musicInput.files[0];
+  if (!file) return;
+  const form = new FormData();
+  form.append('music', file);
+  const resp = await fetch('/api/upload-music', { method: 'POST', body: form });
+  const data = await resp.json();
+  musicName = data.music_name;
+  updateMusicUI();
+  musicInput.value = '';
+});
+
+async function removeMusic() {
+  await fetch('/api/remove-music', { method: 'POST' });
+  musicName = null;
+  updateMusicUI();
+}
+
+function updateMusicUI() {
+  const player = document.getElementById('musicPlayer');
+  const name = document.getElementById('musicName');
+  if (musicName) {
+    player.classList.remove('hidden');
+    name.textContent = musicName;
+  } else {
+    player.classList.add('hidden');
+  }
+}
+
+// ========================
+// STEP 4: EXPORT
+// ========================
+async function loadExport() {
+  const resp = await fetch('/api/get-data');
+  const data = await resp.json();
+  photos = data.photos;
+  musicName = data.music_name;
+  
+  const total = photos.reduce((s,p) => s + p.duration, 0);
+  const trans = 0.8 * Math.max(0, photos.length - 1);
+  
+  document.getElementById('exportSummary').innerHTML = `
+    <div class="export-stat"><div class="val">${photos.length}</div><div class="lbl">Fotos</div></div>
+    <div class="export-stat"><div class="val">${Math.round(total+trans)}s</div><div class="lbl">Duración</div></div>
+    <div class="export-stat"><div class="val">${musicName||'Sin'}</div><div class="lbl">Música</div></div>
+  `;
+  
+  document.getElementById('exportActions').classList.remove('hidden');
+  document.getElementById('resultSection').classList.remove('active');
+  document.getElementById('renderProgress').classList.remove('active');
+}
+
+async function renderVideo() {
+  document.getElementById('btnRender').disabled = true;
+  document.getElementById('exportActions').classList.add('hidden');
+  document.getElementById('renderProgress').classList.add('active');
+  
+  const fill = document.getElementById('progressFill');
+  const text = document.getElementById('progressText');
+  
+  // Simular progreso
+  let progress = 0;
+  const progressInterval = setInterval(() => {
+    progress = Math.min(progress + Math.random() * 10, 85);
+    fill.style.width = progress + '%';
+    text.textContent = 'Renderizando H.264 MP4...';
+  }, 500);
+  
+  try {
+    const resp = await fetch('/api/render', { method: 'POST' });
+    const data = await resp.json();
+    clearInterval(progressInterval);
+    
+    if (data.error) {
+      text.textContent = 'Error: ' + data.error;
+      return;
+    }
+    
+    fill.style.width = '100%';
+    text.textContent = '✅ ¡Listo! H.264 MP4' + (data.has_audio ? ' + música' : '') + ' · ' + data.size_mb + ' MB · ' + data.width + '×' + data.height;
+    
+    // Mostrar video
+    const resultSection = document.getElementById('resultSection');
+    resultSection.classList.add('active');
+    const video = document.getElementById('resultVideo');
+    video.src = '/api/download/output.mp4';
+    
+    const btnDownload = document.getElementById('btnDownload');
+    btnDownload.href = video.src;
+    
+  } catch(e) {
+    clearInterval(progressInterval);
+    text.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function getUserId() {
+  const resp = await fetch('/api/get-data');
+  // El user_id está en la sesión, pero no lo exponemos directamente
+  // Usamos la misma cookie de sesión para la descarga
+  return 'current';
+}
+
+async function resetAll() {
+  await fetch('/api/reset', { method: 'POST' });
+  photos = [];
+  musicName = null;
+  updateMusicUI();
+  renderPhotoGrid();
+  goToStep(1);
+}
+
+// ========================
+// INIT
+// ========================
+goToStep(1);
+</script>
+</body>
+</html>
