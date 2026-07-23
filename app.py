@@ -68,6 +68,8 @@ def _render_thread(user_dir, task_id):
         video = concatenate_videoclips(clips, method="compose")
         if data['music']:
             mp = os.path.join(user_dir, data['music'])
+            if not os.path.exists(mp) and data.get('music_source') == 'library':
+                mp = os.path.join(app.static_folder, 'musica', data['music'])
             if os.path.exists(mp):
                 a = AudioFileClip(mp)
                 if a.duration > video.duration: a = a.subclipped(0, video.duration)
@@ -137,17 +139,50 @@ def set_durations():
     save_user_data(data)
     return jsonify({'status':'ok'})
 
+@app.route('/api/music-library')
+def music_library():
+    """Lista los MP3 disponibles en static/musica/"""
+    lib_dir = os.path.join(app.static_folder, 'musica')
+    tracks = []
+    if os.path.exists(lib_dir):
+        for f in sorted(os.listdir(lib_dir)):
+            if f.endswith('.mp3'):
+                name = f.replace('.mp3','').replace('_',' ').replace('-',' ')
+                tracks.append({'filename': f, 'name': name.title()})
+    return jsonify({'tracks': tracks})
+
+@app.route('/api/select-library-music', methods=['POST'])
+def select_library_music():
+    """Selecciona un tema de la biblioteca"""
+    data = get_user_data()
+    filename = request.json.get('filename')
+    lib_path = os.path.join(app.static_folder, 'musica', filename)
+    if not os.path.exists(lib_path):
+        return jsonify({'error': 'Tema no encontrado'}), 404
+    
+    # Si había música subida, eliminarla
+    user_dir = get_user_dir()
+    if data['music'] and os.path.exists(os.path.join(user_dir, data['music'])):
+        os.remove(os.path.join(user_dir, data['music']))
+    
+    data['music'] = filename
+    data['music_name'] = '🎵 ' + filename.replace('.mp3','').replace('_',' ').replace('-',' ').title()
+    data['music_source'] = 'library'
+    save_user_data(data)
+    return jsonify({'status': 'ok', 'music_name': data['music_name']})
 @app.route('/api/upload-music', methods=['POST'])
 def upload_music():
     user_dir = get_user_dir()
     data = get_user_data()
     f = request.files.get('music')
     if f and f.filename:
-        if data['music'] and os.path.exists(os.path.join(user_dir, data['music'])):
+        if data['music'] and data.get('music_source') != 'library' and \
+           os.path.exists(os.path.join(user_dir, data['music'])):
             os.remove(os.path.join(user_dir, data['music']))
         fn = f'music_{uuid.uuid4().hex[:6]}.mp3'
         f.save(os.path.join(user_dir, fn))
         data['music'] = fn; data['music_name'] = f.filename
+        data['music_source'] = 'upload'
     save_user_data(data)
     return jsonify({'status':'ok','music_name':data['music_name']})
 
@@ -155,10 +190,11 @@ def upload_music():
 def remove_music():
     user_dir = get_user_dir()
     data = get_user_data()
-    if data['music']:
+    if data['music'] and data.get('music_source') != 'library':
         fp = os.path.join(user_dir, data['music'])
         if os.path.exists(fp): os.remove(fp)
     data['music'] = None; data['music_name'] = None
+    data.pop('music_source', None)
     save_user_data(data)
     return jsonify({'status':'ok'})
 

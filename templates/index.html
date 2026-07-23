@@ -194,11 +194,18 @@ body {
   <!-- STEP 3: MUSIC -->
   <div class="card hidden" id="step3">
     <h2>🎵 Música de fondo</h2>
-    <p style="color:var(--gris);font-size:14px;margin-bottom:12px;">Agregá un MP3 (opcional).</p>
     
-    <div class="upload-zone" id="musicZone" style="padding:24px;">
-      <span class="icon">🎼</span>
-      <p>Subir archivo MP3</p>
+    <!-- Biblioteca -->
+    <p style="color:var(--gris);font-size:14px;margin-bottom:8px;">Biblioteca GIRO</p>
+    <div id="musicLibrary" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;margin-bottom:16px;">
+      Cargando biblioteca...
+    </div>
+    
+    <!-- Upload propio -->
+    <p style="color:var(--gris);font-size:14px;margin-bottom:4px;">O subí tu propio MP3</p>
+    <div class="upload-zone" id="musicZone" style="padding:20px;">
+      <span style="font-size:24px;">📁</span>
+      <p style="font-size:13px;">Subir archivo</p>
     </div>
     <input type="file" id="musicInput" accept="audio/mpeg,.mp3" hidden>
     
@@ -290,6 +297,7 @@ function goToStep(step) {
   });
   
   if (step === 2) loadDurations();
+  if (step === 3) loadMusicLibrary();
   if (step === 4) loadExport();
 }
 
@@ -420,6 +428,39 @@ async function saveDurations() {
 // ========================
 const musicZone = document.getElementById('musicZone');
 const musicInput = document.getElementById('musicInput');
+
+async function loadMusicLibrary() {
+  try {
+    const resp = await fetch('/api/music-library');
+    const data = await resp.json();
+    const container = document.getElementById('musicLibrary');
+    if (!data.tracks.length) {
+      container.innerHTML = '<p style="color:var(--gris);font-size:13px;">Biblioteca vacía. Agregá MP3s a static/musica/</p>';
+      return;
+    }
+    container.innerHTML = data.tracks.map(t => `
+      <div class="music-lib-item" onclick="selectLibraryTrack('${t.filename}')"
+           style="padding:8px 12px;background:var(--gris-l);border-radius:6px;cursor:pointer;
+                  border:2px solid transparent;font-size:13px;transition:all 0.15s;"
+           onmouseover="this.style.borderColor='var(--rojo)'"
+           onmouseout="this.style.borderColor='transparent'">
+        🎵 ${t.name}
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('musicLibrary').innerHTML = '<p style="color:var(--gris);font-size:13px;">Error al cargar biblioteca</p>';
+  }
+}
+
+async function selectLibraryTrack(filename) {
+  const resp = await fetch('/api/select-library-music', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ filename }),
+  });
+  const data = await resp.json();
+  musicName = data.music_name;
+  updateMusicUI();
+}
 
 musicZone.addEventListener('click', () => musicInput.click());
 musicInput.addEventListener('change', async () => {
