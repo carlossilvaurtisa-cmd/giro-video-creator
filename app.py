@@ -1,45 +1,91 @@
 """
 GIRO Video Creator — Flask + MoviePy
-=====================================
 """
-import os, uuid, shutil, time, tempfile, json
+import os, uuid, shutil, time, tempfile, json, threading
 from flask import Flask, render_template, request, jsonify, send_file, session
 from PIL import Image
-from moviepy import ImageClip, AudioFileClip, concatenate_videoclips, vfx
+
+try:
+    from moviepy import ImageClip, AudioFileClip, concatenate_videoclips, vfx
+    MOVIEPY_OK = True
+except Exception as e:
+    print(f"WARNING: moviepy no disponible: {e}")
+    MOVIEPY_OK = False
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'giro-dev-key-2024')
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 
 BASE_DIR = os.path.join(tempfile.gettempdir(), 'giro_video_creator')
 os.makedirs(BASE_DIR, exist_ok=True)
 
+# Render async
+render_tasks = {}
+
 def get_user_dir():
-    """Crea/recupera carpeta temporal del usuario"""
     if 'user_id' not in session:
         session['user_id'] = uuid.uuid4().hex[:12]
-    user_dir = os.path.join(BASE_DIR, session['user_id'])
-    os.makedirs(user_dir, exist_ok=True)
-    return user_dir
+    d = os.path.join(BASE_DIR, session['user_id'])
+    os.makedirs(d, exist_ok=True)
+    return d
 
 def get_user_data():
-    """Carga datos de la sesión desde JSON"""
-    user_dir = get_user_dir()
-    data_path = os.path.join(user_dir, 'data.json')
-    if os.path.exists(data_path):
-        with open(data_path, 'r') as f:
-            return json.load(f)
+    p = os.path.join(get_user_dir(), 'data.json')
+    if os.path.exists(p):
+        with open(p) as f: return json.load(f)
     return {'photos': [], 'music': None, 'music_name': None}
 
 def save_user_data(data):
-    """Guarda datos de la sesión a JSON"""
-    user_dir = get_user_dir()
-    with open(os.path.join(user_dir, 'data.json'), 'w') as f:
+    with open(os.path.join(get_user_dir(), 'data.json'), 'w') as f:
         json.dump(data, f)
 
-# ========================
-# RUTAS
-# ========================
+def _render_thread(user_dir, task_id):
+    """Render en background"""
+    dp = os.path.join(user_dir, 'data.json')
+    with open(dp) as f: data = json.load(f)
+    out = os.path.join(user_dir, 'output.mp4')
+    tmp = []
+    try:
+        durations = [p['duration'] for p in data['photos']]
+        img0 = Image.open(os.path.join(user_dir, f"{data['photos'][0]['id']}.jpg"))
+        W, H = img0.size
+        mx = 1280
+        if W >= H and W > mx: H = int(H*mx/W); W = mx
+        elif H > W and H > mx: W = int(W*mx/H); H = mx
+        if W%2: W+=1
+        if H%2: H+=1
+        clips = []
+        for i, p in enumerate(data['photos']):
+            fp = os.path.join(user_dir, f"{p['id']}.jpg")
+            img = Image.open(fp).resize((W,H), Image.LANCZOS)
+            t = os.path.join(user_dir, f"_t{i}.png")
+            img.save(t); tmp.append(t)
+            clips.append(ImageClip(t, duration=durations[i]))
+        for i, c in enumerate(clips):
+            if i>0: c=c.with_effects([vfx.CrossFadeIn(0.8)])
+            if i<len(clips)-1: c=c.with_effects([vfx.CrossFadeOut(0.8)])
+            clips[i]=c
+        video = concatenate_videoclips(clips, method="compose")
+        if data['music']:
+            mp = os.path.join(user_dir, data['music'])
+            if os.path.exists(mp):
+                a = AudioFileClip(mp)
+                if a.duration > video.duration: a = a.subclipped(0, video.duration)
+                video = video.with_audio(a)
+        video.write_videofile(out, codec='libx264', audio_codec='aac',
+                              bitrate='2000k', fps=30, preset='ultrafast',
+                              threads=2, logger=None)
+        sz = os.path.getsize(out)
+        render_tasks[task_id] = {'status':'done','size_mb':round(sz/(1024*1024),1),
+                                  'has_audio':bool(data['music']),'width':W,'height':H}
+    except Exception as e:
+        render_tasks[task_id] = {'status':'error','error':str(e)}
+    finally:
+        for fp in tmp:
+            try: os.remove(fp)
+            except: pass
+
+# ===== ROUTES =====
 
 @app.route('/')
 def index():
@@ -49,218 +95,122 @@ def index():
 def upload_photos():
     user_dir = get_user_dir()
     data = get_user_data()
-    
-    files = request.files.getlist('photos')
-    for f in files:
+    for f in request.files.getlist('photos'):
         if f.filename:
-            photo_id = uuid.uuid4().hex[:8]
-            filepath = os.path.join(user_dir, f'{photo_id}.jpg')
+            pid = uuid.uuid4().hex[:8]
+            fp = os.path.join(user_dir, f'{pid}.jpg')
             img = Image.open(f.stream)
-            # Redimensionar para ahorrar espacio
             w, h = img.size
-            if max(w, h) > 1920:
-                ratio = 1920 / max(w, h)
-                img = img.resize((int(w*ratio), int(h*ratio)), Image.LANCZOS)
-            img.save(filepath, 'JPEG', quality=85)
-            data['photos'].append({
-                'id': photo_id,
-                'name': f.filename,
-                'duration': 8,
-            })
-    
+            if max(w,h)>1920:
+                r=1920/max(w,h); img=img.resize((int(w*r),int(h*r)), Image.LANCZOS)
+            img.save(fp, 'JPEG', quality=85)
+            data['photos'].append({'id':pid,'name':f.filename,'duration':8})
     save_user_data(data)
-    return jsonify({'status': 'ok', 'photos': data['photos']})
+    return jsonify({'status':'ok','photos':data['photos']})
 
 @app.route('/api/reorder-photos', methods=['POST'])
 def reorder_photos():
     data = get_user_data()
-    order = request.json.get('order', [])
-    photo_map = {p['id']: p for p in data['photos']}
-    data['photos'] = [photo_map[pid] for pid in order if pid in photo_map]
+    order = request.json.get('order',[])
+    m = {p['id']:p for p in data['photos']}
+    data['photos'] = [m[pid] for pid in order if pid in m]
     save_user_data(data)
-    return jsonify({'status': 'ok'})
+    return jsonify({'status':'ok'})
 
 @app.route('/api/remove-photo', methods=['POST'])
 def remove_photo():
     user_dir = get_user_dir()
     data = get_user_data()
-    photo_id = request.json.get('id')
-    
-    data['photos'] = [p for p in data['photos'] if p['id'] != photo_id]
-    # Eliminar archivo
-    filepath = os.path.join(user_dir, f'{photo_id}.jpg')
-    if os.path.exists(filepath):
-        os.remove(filepath)
-    
+    pid = request.json.get('id')
+    data['photos'] = [p for p in data['photos'] if p['id']!=pid]
+    fp = os.path.join(user_dir, f'{pid}.jpg')
+    if os.path.exists(fp): os.remove(fp)
     save_user_data(data)
-    return jsonify({'status': 'ok', 'photos': data['photos']})
+    return jsonify({'status':'ok','photos':data['photos']})
 
 @app.route('/api/set-durations', methods=['POST'])
 def set_durations():
     data = get_user_data()
-    durations = request.json.get('durations', {})
+    durs = request.json.get('durations',{})
     for p in data['photos']:
-        if p['id'] in durations:
-            p['duration'] = int(durations[p['id']])
+        if p['id'] in durs: p['duration'] = int(durs[p['id']])
     save_user_data(data)
-    return jsonify({'status': 'ok'})
+    return jsonify({'status':'ok'})
 
 @app.route('/api/upload-music', methods=['POST'])
 def upload_music():
     user_dir = get_user_dir()
     data = get_user_data()
-    
-    file = request.files.get('music')
-    if file and file.filename:
-        # Eliminar música anterior
+    f = request.files.get('music')
+    if f and f.filename:
         if data['music'] and os.path.exists(os.path.join(user_dir, data['music'])):
             os.remove(os.path.join(user_dir, data['music']))
-        
-        filename = f'music_{uuid.uuid4().hex[:6]}.mp3'
-        filepath = os.path.join(user_dir, filename)
-        file.save(filepath)
-        data['music'] = filename
-        data['music_name'] = file.filename
-    
+        fn = f'music_{uuid.uuid4().hex[:6]}.mp3'
+        f.save(os.path.join(user_dir, fn))
+        data['music'] = fn; data['music_name'] = f.filename
     save_user_data(data)
-    return jsonify({'status': 'ok', 'music_name': data['music_name']})
+    return jsonify({'status':'ok','music_name':data['music_name']})
 
 @app.route('/api/remove-music', methods=['POST'])
 def remove_music():
     user_dir = get_user_dir()
     data = get_user_data()
-    
     if data['music']:
-        filepath = os.path.join(user_dir, data['music'])
-        if os.path.exists(filepath):
-            os.remove(filepath)
-    data['music'] = None
-    data['music_name'] = None
+        fp = os.path.join(user_dir, data['music'])
+        if os.path.exists(fp): os.remove(fp)
+    data['music'] = None; data['music_name'] = None
     save_user_data(data)
-    return jsonify({'status': 'ok'})
+    return jsonify({'status':'ok'})
 
-@app.route('/api/get-data', methods=['GET'])
+@app.route('/api/get-data')
 def get_data():
     data = get_user_data()
-    # Calcular duración total
-    total_sec = sum(p['duration'] for p in data['photos'])
-    trans_sec = 0.8 * max(0, len(data['photos']) - 1)
-    return jsonify({
-        'photos': data['photos'],
-        'music_name': data['music_name'],
-        'total_duration': int(total_sec + trans_sec),
-        'photo_count': len(data['photos']),
-    })
+    t = sum(p['duration'] for p in data['photos'])
+    tr = 0.8*max(0,len(data['photos'])-1)
+    return jsonify({'photos':data['photos'],'music_name':data['music_name'],
+                    'total_duration':int(t+tr),'photo_count':len(data['photos'])})
 
 @app.route('/api/photo/<photo_id>.jpg')
 def serve_photo(photo_id):
-    user_dir = get_user_dir()
-    filepath = os.path.join(user_dir, f'{photo_id}.jpg')
-    if os.path.exists(filepath):
-        return send_file(filepath, mimetype='image/jpeg')
-    return '', 404
+    fp = os.path.join(get_user_dir(), f'{photo_id}.jpg')
+    if os.path.exists(fp): return send_file(fp, mimetype='image/jpeg')
+    return '',404
 
 @app.route('/api/render', methods=['POST'])
 def render_video():
-    user_dir = get_user_dir()
+    if not MOVIEPY_OK:
+        return jsonify({'error':'MoviePy no disponible'}),500
     data = get_user_data()
+    if len(data['photos'])<2:
+        return jsonify({'error':'Necesitás al menos 2 fotos'}),400
     
-    if len(data['photos']) < 2:
-        return jsonify({'error': 'Necesitás al menos 2 fotos'}), 400
-    
-    output_path = os.path.join(user_dir, 'output.mp4')
-    tmp_files = []
-    
-    try:
-        durations = [p['duration'] for p in data['photos']]
-        
-        # Tamaño de salida (basado en primera foto)
-        img0 = Image.open(os.path.join(user_dir, f"{data['photos'][0]['id']}.jpg"))
-        W, H = img0.size
-        max_dim = 1280
-        if W >= H and W > max_dim:
-            H = int(H * max_dim / W); W = max_dim
-        elif H > W and H > max_dim:
-            W = int(W * max_dim / H); H = max_dim
-        if W % 2: W += 1
-        if H % 2: H += 1
-        
-        # Crear clips
-        clips = []
-        for i, p in enumerate(data['photos']):
-            filepath = os.path.join(user_dir, f"{p['id']}.jpg")
-            img = Image.open(filepath).resize((W, H), Image.LANCZOS)
-            tmp = os.path.join(user_dir, f"_tmp_{i}.png")
-            img.save(tmp)
-            tmp_files.append(tmp)
-            clips.append(ImageClip(tmp, duration=durations[i]))
-        
-        # Transiciones fade
-        for i, c in enumerate(clips):
-            if i > 0:
-                c = c.with_effects([vfx.CrossFadeIn(0.8)])
-            if i < len(clips) - 1:
-                c = c.with_effects([vfx.CrossFadeOut(0.8)])
-            clips[i] = c
-        
-        video = concatenate_videoclips(clips, method="compose")
-        
-        # Audio
-        if data['music']:
-            music_path = os.path.join(user_dir, data['music'])
-            if os.path.exists(music_path):
-                audio = AudioFileClip(music_path)
-                if audio.duration > video.duration:
-                    audio = audio.subclipped(0, video.duration)
-                video = video.with_audio(audio)
-        
-        # Exportar
-        video.write_videofile(
-            output_path, codec='libx264', audio_codec='aac',
-            bitrate='2000k', fps=30, preset='medium', threads=2, logger=None,
-        )
-        
-        # Limpiar temporales
-        for fp in tmp_files:
-            try: os.remove(fp)
-            except: pass
-        
-        # Datos del resultado
-        file_size = os.path.getsize(output_path)
-        has_audio = bool(data['music'] and os.path.exists(os.path.join(user_dir, data['music'])))
-        
-        return jsonify({
-            'status': 'ok',
-            'filename': 'output.mp4',
-            'size_mb': round(file_size / (1024 * 1024), 1),
-            'has_audio': has_audio,
-            'width': W,
-            'height': H,
-        })
-    
-    except Exception as e:
-        for fp in tmp_files:
-            try: os.remove(fp)
-            except: pass
-        return jsonify({'error': str(e)}), 500
+    task_id = uuid.uuid4().hex[:8]
+    render_tasks[task_id] = {'status':'processing'}
+    t = threading.Thread(target=_render_thread, args=(get_user_dir(), task_id))
+    t.start()
+    return jsonify({'status':'processing','task_id':task_id})
+
+@app.route('/api/render-status/<task_id>')
+def render_status(task_id):
+    task = render_tasks.get(task_id)
+    if not task: return jsonify({'status':'not_found'}),404
+    return jsonify(task)
 
 @app.route('/api/download/output.mp4')
 def download_video():
-    user_dir = get_user_dir()
-    filepath = os.path.join(user_dir, 'output.mp4')
-    if os.path.exists(filepath):
-        return send_file(filepath, mimetype='video/mp4',
+    fp = os.path.join(get_user_dir(), 'output.mp4')
+    if os.path.exists(fp):
+        return send_file(fp, mimetype='video/mp4',
                         download_name=f'giro_video_{int(time.time())}.mp4',
                         as_attachment=True)
-    return '', 404
+    return '',404
 
 @app.route('/api/reset', methods=['POST'])
 def reset():
-    user_dir = get_user_dir()
-    if os.path.exists(user_dir):
-        shutil.rmtree(user_dir)
+    d = get_user_dir()
+    if os.path.exists(d): shutil.rmtree(d)
     session.pop('user_id', None)
-    return jsonify({'status': 'ok'})
+    return jsonify({'status':'ok'})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

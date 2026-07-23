@@ -244,6 +244,28 @@ body {
 
 <script>
 // ========================
+// HELPERS
+// ========================
+function toast(msg, isError = false) {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.className = 'toast' + (isError ? ' error' : '');
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+async function api(url, options = {}) {
+  const resp = await fetch(url, options);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text || 'Error ' + resp.status);
+  }
+  return resp.json();
+}
+
+// ========================
 // STATE
 // ========================
 let currentStep = 1;
@@ -295,11 +317,16 @@ async function uploadPhotos(files) {
   const form = new FormData();
   files.forEach(f => form.append('photos', f));
   
-  const resp = await fetch('/api/upload-photos', { method: 'POST', body: form });
-  const data = await resp.json();
-  photos = data.photos;
-  renderPhotoGrid();
-  document.getElementById('btnStep1Next').disabled = photos.length < 2;
+  try {
+    const resp = await fetch('/api/upload-photos', { method: 'POST', body: form });
+    if (!resp.ok) throw new Error('Error del servidor: ' + resp.status);
+    const data = await resp.json();
+    photos = data.photos;
+    renderPhotoGrid();
+    document.getElementById('btnStep1Next').disabled = photos.length < 2;
+  } catch(e) {
+    toast('Error al subir fotos: ' + e.message, true);
+  }
 }
 
 function renderPhotoGrid() {
@@ -450,44 +477,52 @@ async function loadExport() {
 async function renderVideo() {
   document.getElementById('btnRender').disabled = true;
   document.getElementById('exportActions').classList.add('hidden');
-  document.getElementById('renderProgress').classList.add('active');
-  
+  const progress = document.getElementById('renderProgress');
+  progress.classList.add('active');
   const fill = document.getElementById('progressFill');
   const text = document.getElementById('progressText');
   
-  // Simular progreso
-  let progress = 0;
-  const progressInterval = setInterval(() => {
-    progress = Math.min(progress + Math.random() * 10, 85);
-    fill.style.width = progress + '%';
-    text.textContent = 'Renderizando H.264 MP4...';
-  }, 500);
-  
   try {
+    // Iniciar render
+    text.textContent = 'Iniciando render...';
     const resp = await fetch('/api/render', { method: 'POST' });
-    const data = await resp.json();
-    clearInterval(progressInterval);
-    
-    if (data.error) {
-      text.textContent = 'Error: ' + data.error;
-      return;
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || 'Error ' + resp.status);
     }
+    const { task_id } = await resp.json();
     
-    fill.style.width = '100%';
-    text.textContent = '✅ ¡Listo! H.264 MP4' + (data.has_audio ? ' + música' : '') + ' · ' + data.size_mb + ' MB · ' + data.width + '×' + data.height;
-    
-    // Mostrar video
-    const resultSection = document.getElementById('resultSection');
-    resultSection.classList.add('active');
-    const video = document.getElementById('resultVideo');
-    video.src = '/api/download/output.mp4';
-    
-    const btnDownload = document.getElementById('btnDownload');
-    btnDownload.href = video.src;
+    // Poll hasta que termine
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 1500));
+      const statusResp = await fetch('/api/render-status/' + task_id);
+      const status = await statusResp.json();
+      
+      if (status.status === 'done') {
+        fill.style.width = '100%';
+        text.textContent = '✅ ¡Listo! MP4' + (status.has_audio?' + música':'') + ' · ' + status.size_mb + ' MB';
+        
+        const video = document.getElementById('resultVideo');
+        video.src = '/api/download/output.mp4?' + Date.now();
+        document.getElementById('btnDownload').href = video.src;
+        document.getElementById('resultSection').classList.add('active');
+        return;
+      }
+      
+      if (status.status === 'error') {
+        throw new Error(status.error);
+      }
+      
+      // Actualizar progreso
+      const pct = Math.min(95, 10 + i * 3);
+      fill.style.width = pct + '%';
+      text.textContent = 'Renderizando H.264 MP4...';
+    }
+    throw new Error('Timeout: el render tomó demasiado tiempo');
     
   } catch(e) {
-    clearInterval(progressInterval);
     text.textContent = 'Error: ' + e.message;
+    toast('Error al renderizar: ' + e.message, true);
   }
 }
 
