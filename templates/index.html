@@ -514,6 +514,7 @@ async function loadExport() {
   document.getElementById('exportBack').classList.remove('hidden');
   document.getElementById('resultSection').classList.remove('active');
   document.getElementById('renderProgress').classList.remove('active');
+  document.getElementById('btnRender').disabled = false;
 }
 
 async function renderVideo() {
@@ -565,6 +566,8 @@ async function renderVideo() {
     text.textContent = 'Error: ' + e.message;
     toast('Error al renderizar: ' + e.message, true);
     document.getElementById('exportBack').classList.remove('hidden');
+    document.getElementById('btnRender').disabled = false;
+    document.getElementById('exportActions').classList.remove('hidden');
   }
 }
 
