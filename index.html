@@ -904,21 +904,22 @@ async function renderVideo() {
       await ff.writeFile('input.webm', new Uint8Array(await videoBlob.arrayBuffer()));
       await ff.writeFile('music.mp3', musicBytes);
 
-      // copiar video (-c:v copy), codificar audio a Vorbis (-c:a libvorbis)
+      // Codecs disponibles en FFmpeg.wasm estándar: mpeg4 (video) + aac (audio) → MP4
       await ff.exec([
         '-i', 'input.webm', '-i', 'music.mp3',
-        '-c:v', 'copy', '-c:a', 'libvorbis', '-b:a', '128k',
-        '-shortest', '-y', 'output.webm'
+        '-c:v', 'mpeg4', '-c:a', 'aac',
+        '-b:v', '2M', '-b:a', '128k',
+        '-shortest', '-y', 'output.mp4'
       ]);
 
-      const out = await ff.readFile('output.webm');
-      finalBlob = new Blob([out], { type: 'video/webm' });
-      finalExt = 'webm';
-      finalLabel = 'WebM + música (Opus/Vorbis)';
+      const out = await ff.readFile('output.mp4');
+      finalBlob = new Blob([out], { type: 'video/mp4' });
+      finalExt = 'mp4';
+      finalLabel = 'MP4 + música';
 
       await ff.deleteFile('input.webm');
       await ff.deleteFile('music.mp3');
-      await ff.deleteFile('output.webm');
+      await ff.deleteFile('output.mp4');
     } catch (e) {
       console.error('FFmpeg:', e);
       toast('⚠️ Error al combinar audio. Video sin música.', 'error');
