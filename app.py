@@ -131,11 +131,28 @@ def _render_thread(user_dir, task_id):
                 a = AudioFileClip(mp)
                 if a.duration > video.duration:
                     a = a.subclipped(0, video.duration)
+                # Fade-out últimos 2.5s (intenta todos los paths)
                 try:
-                    if _audio_fadeout and a.duration > 2.5:
-                        a = a.with_effects([_audio_fadeout(2.5)])
-                except:
-                    pass
+                    fade_dur = 2.5
+                    if a.duration > fade_dur:
+                        if _audio_fadeout:
+                            a = a.with_effects([_audio_fadeout(fade_dur)])
+                        else:
+                            # Fallback: modificar samples con numpy
+                            import numpy as np
+                            arr = a.to_soundarray()
+                            sr = a.fps
+                            n = int(fade_dur * sr)
+                            env = np.linspace(1.0, 0.0, n)
+                            for ch in range(arr.shape[1]):
+                                arr[-n:, ch] *= env
+                            try:
+                                from moviepy import AudioArrayClip
+                            except:
+                                from moviepy.audio.io.AudioArrayClip import AudioArrayClip
+                            a = AudioArrayClip(arr, fps=sr)
+                except Exception as e:
+                    print(f"Audio fade-out no disponible: {e}")
                 video = video.with_audio(a)
 
         video.write_videofile(out, codec='libx264', audio_codec='aac',
