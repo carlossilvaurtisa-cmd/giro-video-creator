@@ -29,6 +29,20 @@ if not _audio_fadeout:
     except:
         pass
 
+_crossfadein = None
+_crossfadeout = None
+try:
+    from moviepy.video.fx.crossfadein import crossfadein as _crossfadein
+    from moviepy.video.fx.crossfadeout import crossfadeout as _crossfadeout
+except:
+    pass
+if not _crossfadein:
+    try:
+        _crossfadein = vfx.CrossFadeIn
+        _crossfadeout = vfx.CrossFadeOut
+    except:
+        pass
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'giro-dev-key-2024')
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
@@ -97,19 +111,16 @@ def _render_thread(user_dir, task_id):
             tmp.append(t)
             clips.append(ImageClip(t, duration=durations[i]))
 
-        for i, c in enumerate(clips):
-            try:
+        # Crossfade (disolución cruzada) entre clips
+        if _crossfadein and _crossfadeout:
+            for i, c in enumerate(clips):
                 if i > 0:
-                    c = c.with_effects([vfx.FadeIn(0.8)])
+                    c = c.with_effects([_crossfadein(0.8)])
                 if i < len(clips) - 1:
-                    c = c.with_effects([vfx.FadeOut(0.8)])
-            except:
-                pass
-            clips[i] = c
-
-        try:
+                    c = c.with_effects([_crossfadeout(0.8)])
+                clips[i] = c
             video = concatenate_videoclips(clips, method="compose", padding=-0.8)
-        except:
+        else:
             video = concatenate_videoclips(clips, method="chain")
 
         if data['music']:
