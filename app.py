@@ -11,8 +11,7 @@ from moviepy import ImageClip, AudioFileClip, concatenate_videoclips, vfx
 ROJO    = "#F32624"
 ROJO_H  = "#d41f1d"
 GRIS    = "#636363"
-GRIS_L  = "#f5f5f7"
-GRIS_B  = "#e5e5ea"
+GRIS_B  = "#e0e0e0"
 BLANCO  = "#FFFFFF"
 NEGRO   = "#1d1d1f"
 
@@ -21,105 +20,79 @@ st.set_page_config(page_title="GIRO Video Creator", page_icon="🎬", layout="ce
 # ===== iOS DESIGN SYSTEM =====
 st.markdown(f"""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     
-    * {{ font-family: 'Inter', -apple-system, sans-serif !important; }}
+    * {{ font-family: 'Inter', 'Century Gothic', 'Segoe UI', sans-serif !important; }}
     
-    /* Fondo iOS */
-    .stApp {{ background: {GRIS_L} !important; }}
-    .main {{ max-width: 480px; margin: 0 auto; }}
+    /* Fondo blanco como el index.html original */
+    .stApp {{ background: {BLANCO} !important; }}
     
-    /* Header */
+    /* Header con borde rojo */
     .ios-header {{
-        text-align: center; padding: 40px 0 20px 0;
+        background: {BLANCO}; border-bottom: 3px solid {ROJO};
+        padding: 14px 0; margin-bottom: 24px;
+        display: flex; align-items: center; gap: 12px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
     }}
     .ios-logo {{
-        font-size: 34px; font-weight: 800; color: {ROJO}; letter-spacing: -1px;
+        font-size: 26px; font-weight: 700; color: {ROJO}; letter-spacing: -0.5px;
     }}
     .ios-subtitle {{
-        font-size: 15px; color: {GRIS}; font-weight: 400; margin-top: -4px;
+        font-size: 15px; color: {GRIS}; border-left: 2px solid {GRIS_B};
+        padding-left: 12px; font-weight: 400;
     }}
     
     /* Progress dots */
     .progress-dots {{
-        display: flex; justify-content: center; gap: 12px; padding: 12px 0 24px 0;
+        display: flex; gap: 8px; padding: 0 0 20px 0;
     }}
-    .dot {{ width: 8px; height: 8px; border-radius: 50%; background: {GRIS_B}; transition: all 0.3s; }}
-    .dot.active {{ background: {ROJO}; width: 24px; border-radius: 4px; }}
-    .dot.done {{ background: {ROJO}; opacity: 0.6; }}
+    .dot {{ width: 28px; height: 4px; border-radius: 2px; background: {GRIS_B}; transition: all 0.3s; }}
+    .dot.active {{ background: {ROJO}; width: 40px; }}
+    .dot.done {{ background: {ROJO}; opacity: 0.4; }}
     
     /* Cards */
     .ios-card {{
-        background: {BLANCO}; border-radius: 16px; padding: 24px;
-        margin: 0 0 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        background: {BLANCO}; border: 1px solid {GRIS_B}; border-radius: 8px;
+        padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        margin-bottom: 16px;
     }}
     
     /* Buttons */
     .stButton > button {{
         background: {ROJO} !important; color: white !important;
-        border: none !important; border-radius: 10px !important;
-        font-weight: 600 !important; font-size: 15px !important;
-        padding: 10px 20px !important; transition: all 0.15s !important;
-        letter-spacing: -0.2px !important;
+        border: none !important; border-radius: 6px !important;
+        font-weight: 600 !important; font-size: 14px !important;
+        padding: 8px 18px !important; transition: all 0.15s !important;
     }}
     .stButton > button:hover {{ background: {ROJO_H} !important; }}
     .stButton > button:disabled {{ background: {GRIS_B} !important; color: #999 !important; }}
     
-    /* Secondary button */
-    .btn-secondary > button {{
-        background: {GRIS_L} !important; color: {ROJO} !important;
-        border: 1.5px solid {GRIS_B} !important;
-    }}
-    
     /* Upload zone */
-    .stFileUploader > div {{ border-radius: 14px !important; }}
-    
-    /* Photo cards */
-    .photo-mini {{
-        background: {BLANCO}; border-radius: 12px; overflow: hidden;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-        text-align: center; padding-bottom: 6px;
+    .stFileUploader > div {{
+        border: 2px dashed {GRIS_B} !important; border-radius: 8px !important;
+        background: #fafafa !important; transition: all 0.2s !important;
     }}
-    .photo-badge {{
-        display: inline-block; background: {ROJO}; color: white;
-        width: 22px; height: 22px; border-radius: 50%;
-        font-size: 12px; font-weight: 700; line-height: 22px;
-        margin: 6px 0 2px 0;
-    }}
-    
-    /* Slider */
-    .stSlider > div > div > div > div {{
-        background: {ROJO} !important;
-    }}
+    .stFileUploader > div:hover {{ border-color: {ROJO} !important; background: #fef5f5 !important; }}
     
     /* Progress bar */
-    .stProgress > div > div > div > div {{
-        background: {ROJO} !important;
-    }}
+    .stProgress > div > div > div > div {{ background: {ROJO} !important; }}
     
-    /* Radio buttons */
-    .stRadio > div > label > div {{ color: {NEGRO} !important; }}
+    /* Success */
+    .stSuccess {{ border-radius: 8px !important; border-left: 4px solid {ROJO} !important; }}
     
-    /* Audio player */
-    .stAudio > div {{ border-radius: 12px !important; }}
-    
-    /* Success message */
-    .stSuccess {{ border-radius: 12px !important; }}
+    /* Info */
+    .stInfo {{ border-radius: 8px !important; }}
     
     /* Captions */
-    .stCaption {{ color: {GRIS} !important; }}
-    
-    /* Divider thinner */
-    hr {{ margin: 8px 0 !important; border-color: {GRIS_B} !important; }}
-    
-    /* Select slider */
-    .stSelectSlider > div > div > div > div {{ background: {ROJO} !important; }}
+    .stCaption {{ color: {GRIS} !important; font-size: 13px !important; }}
     
     /* Compact columns */
-    div[data-testid="column"] {{ padding: 0 2px !important; }}
+    div[data-testid="column"] {{ padding: 0 3px !important; }}
     
-    /* Small icon buttons inside photo cards */
-    .stButton > button > div > p {{ font-size: 11px !important; }}
+    /* Radio / Select slider accents */
+    .stSelectSlider > div > div > div > div {{ background: {ROJO} !important; }}
+    
+    hr {{ border-color: {GRIS_B} !important; margin: 12px 0 !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -131,18 +104,18 @@ if 'music_name' not in st.session_state: st.session_state.music_name = None
 if 'rendered_video' not in st.session_state: st.session_state.rendered_video = None
 
 # ===== CENTERED CONTAINER =====
-_, c, _ = st.columns([1, 3, 1])
+_, c, _ = st.columns([1, 4, 1])
 
 with c:
     # ===== HEADER =====
     st.markdown(f"""
     <div class="ios-header">
-        <div class="ios-logo">GIRO</div>
-        <div class="ios-subtitle">Video Creator</div>
+        <span class="ios-logo">GIRO</span>
+        <span class="ios-subtitle">Video Creator</span>
     </div>
     """, unsafe_allow_html=True)
 
-    # ===== PROGRESS DOTS =====
+    # ===== PROGRESS BAR =====
     dots_html = '<div class="progress-dots">'
     for i in range(1, 5):
         cls = "active" if i == st.session_state.step else ("done" if i < st.session_state.step else "")
@@ -171,7 +144,7 @@ with c:
             for i in range(n):
                 name, data, dur = st.session_state.photos[i]
                 with cols[i]:
-                    st.markdown(f'<div class="photo-badge">{i+1}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="display:inline-block;background:{ROJO};color:white;width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:700;line-height:20px;text-align:center;margin-bottom:2px;">{i+1}</div>', unsafe_allow_html=True)
                     try:
                         img = Image.open(io.BytesIO(data))
                         st.image(img, use_container_width=True)
