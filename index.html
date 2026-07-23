@@ -966,14 +966,9 @@ async function renderVideo() {
     }
   }
 
-  // --- REPRODUCIR MÚSICA por parlantes (preview) ---
-  if (hasAudio && audioEl) {
-    audioEl.volume = 0.7;
-    audioEl.play().catch(() => {});
-  }
-
   // --- ENCODIFICAR AUDIO (ráfaga, 100ms chunks) ---
   if (hasAudio && audioEncoder && audioPCM) {
+    progressText.textContent = 'Codificando audio AAC...';
     const samplesPerChunk = Math.floor(audioSampleRate / 10);
     let offset = 0;
     let timestamp = 0;
@@ -1007,57 +1002,36 @@ async function renderVideo() {
     audioEncodeDone = true;
   }
 
-  // --- LOOP DE RENDER + ENCODIFICACIÓN (simplificado, sin trabas) ---
-  const startTime = performance.now() / 1000;
-  let frameIdx = 0;
-  let lastProgress = -1;
-
-  await new Promise(resolve => {
-    function renderLoop() {
-      if (!state.isRendering) { resolve(); return; }
-
-      const elapsed = performance.now() / 1000 - startTime;
-      const pct = Math.round(Math.min(elapsed / totalDuration, 1) * 100);
-      if (pct !== lastProgress) {
-        lastProgress = pct;
-        progressFill.style.width = pct + '%';
-        const rem = Math.max(0, Math.round(totalDuration - elapsed));
-        progressText.textContent = `Renderizando H.264... ${pct}% (quedan ~${rem}s)`;
-      }
-
-      // Dibujar y encodificar frames pendientes
-      while (frameIdx < totalFrames) {
-        const frameTime = frameIdx / FPS;
-        if (frameTime > elapsed) break; // aún no toca este frame
-        if (videoEncoderError) { resolve(); return; }
-
-        drawFrame(ctx, images, timelineData, frameTime, W, H);
-        const vf = new VideoFrame(canvas, {
-          timestamp: Math.round(frameTime * 1_000_000),
-          duration: Math.round(1 / FPS * 1_000_000),
-        });
-        videoEncoder.encode(vf, { keyFrame: frameIdx % 30 === 0 });
-        vf.close();
-        frameIdx++;
-      }
-
-      // ¿Terminamos?
-      if (frameIdx >= totalFrames) {
-        resolve(); return;
-      }
-
-      // Timeout de seguridad: si pasa 3s extra, cortar
-      if (elapsed > totalDuration + 3) {
-        resolve(); return;
-      }
-
-      requestAnimationFrame(renderLoop);
+  // --- LOOP DE ENCODIFICACIÓN (no real-time, frame por frame) ---
+  for (let i = 0; i < totalFrames; i++) {
+    if (!state.isRendering) break;
+    if (videoEncoderError) {
+      toast('⚠️ Error en codificación H.264', 'error');
+      break;
     }
-    renderLoop();
-  });
+
+    const frameTime = i / FPS;
+    drawFrame(ctx, images, timelineData, frameTime, W, H);
+
+    const vf = new VideoFrame(canvas, {
+      timestamp: Math.round(frameTime * 1_000_000),
+      duration: Math.round(1 / FPS * 1_000_000),
+    });
+    videoEncoder.encode(vf, { keyFrame: i % 30 === 0 });
+    vf.close();
+
+    // Actualizar barra de progreso cada 10 frames
+    if (i % 10 === 0) {
+      const pct = Math.round((i / totalFrames) * 100);
+      progressFill.style.width = pct + '%';
+      const elapsed = i / FPS;
+      const rem = Math.max(0, Math.round(totalDuration - elapsed));
+      progressText.textContent = `Codificando H.264... ${pct}% (quedan ~${rem}s)`;
+      await new Promise(r => setTimeout(r, 0)); // ceder al UI
+    }
+  }
 
   // --- FINALIZAR ---
-  if (audioEl) { audioEl.pause(); audioEl = null; }
   await videoEncoder.flush();
   videoEncoder.close();
   if (audioEncoder) {
