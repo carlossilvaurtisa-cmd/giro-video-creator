@@ -57,9 +57,9 @@ st.markdown(f"""
     /* Buttons */
     .stButton > button {{
         background: {ROJO} !important; color: white !important;
-        border: none !important; border-radius: 12px !important;
-        font-weight: 600 !important; font-size: 17px !important;
-        padding: 14px 24px !important; transition: all 0.15s !important;
+        border: none !important; border-radius: 10px !important;
+        font-weight: 600 !important; font-size: 15px !important;
+        padding: 10px 20px !important; transition: all 0.15s !important;
         letter-spacing: -0.2px !important;
     }}
     .stButton > button:hover {{ background: {ROJO_H} !important; }}
@@ -116,7 +116,10 @@ st.markdown(f"""
     .stSelectSlider > div > div > div > div {{ background: {ROJO} !important; }}
     
     /* Compact columns */
-    div[data-testid="column"] {{ padding: 0 4px !important; }}
+    div[data-testid="column"] {{ padding: 0 2px !important; }}
+    
+    /* Small icon buttons inside photo cards */
+    .stButton > button > div > p {{ font-size: 11px !important; }}
 </style>
 """, unsafe_allow_html=True)
 
