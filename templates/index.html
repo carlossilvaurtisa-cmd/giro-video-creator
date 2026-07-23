@@ -298,7 +298,12 @@ function goToStep(step) {
   
   if (step === 2) loadDurations();
   if (step === 3) loadMusicLibrary();
-  if (step === 4) loadExport();
+  if (step === 4) {
+    document.getElementById('btnRender').disabled = false;
+    document.getElementById('exportActions').classList.remove('hidden');
+    document.getElementById('resultSection').classList.remove('active');
+    loadExport();
+  }
 }
 
 // ========================
@@ -510,11 +515,8 @@ async function loadExport() {
     <div class="export-stat"><div class="val">${musicName||'Sin'}</div><div class="lbl">Música</div></div>
   `;
   
-  document.getElementById('exportActions').classList.remove('hidden');
   document.getElementById('exportBack').classList.remove('hidden');
-  document.getElementById('resultSection').classList.remove('active');
   document.getElementById('renderProgress').classList.remove('active');
-  document.getElementById('btnRender').disabled = false;
 }
 
 async function renderVideo() {
