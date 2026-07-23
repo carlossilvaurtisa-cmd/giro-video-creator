@@ -529,7 +529,7 @@ body {
 
 </main>
 
-<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@4.0.2/build/mp4-muxer.js"></script>
 <script>
 // ============================================================
 //  GIRO VIDEO CREATOR — Todo el procesamiento en el navegador
@@ -789,8 +789,7 @@ btnRender.addEventListener('click', () => {
   renderVideo();
 });
 
-// ===== 11. RENDERIZADO CON FFMPEG.WASM =====
-// Video: canvas → MediaRecorder WebM | Audio: FFmpeg mezcla el MP3 al final
+// ===== 11. RENDERIZADO H.264 NATIVO (WebCodecs + mp4-muxer) =====
 
 function getOutputDimensions(images) {
   if (!images.length) return { W: 1280, H: 720 };
@@ -805,19 +804,6 @@ function getOutputDimensions(images) {
   return { W: iw, H: ih };
 }
 
-// FFmpeg.wasm (carga única, cacheada por el navegador)
-let ffmpeg = null;
-async function getFFmpeg() {
-  if (ffmpeg) return ffmpeg;
-  progressText.textContent = 'Cargando FFmpeg (primera vez ~30MB)...';
-  const { FFmpeg } = FFmpegWASM;
-  ffmpeg = new FFmpeg();
-  await ffmpeg.load({
-    coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
-  });
-  return ffmpeg;
-}
-
 async function renderVideo() {
   state.isRendering = true;
   btnRender.disabled = true;
@@ -830,16 +816,37 @@ async function renderVideo() {
   const BITRATE = 2000000;
   const TRANS_DUR = state.transitionDuration;
 
-  // --- MÚSICA: precargar bytes para FFmpeg + elemento para preview ---
+  // --- MÚSICA: precargar MP3, decodificar a PCM para AudioEncoder ---
   let audioEl = null;
-  let musicBytes = null;
+  let audioPCM = null;      // Float32Array con samples de audio
+  let audioSampleRate = 0;
+  let audioChannels = 1;
   let hasAudio = false;
 
   if (state.selectedTrackIdx >= 0 && state.selectedTrackIdx < state.musicTracks.length) {
     try {
+      progressText.textContent = 'Cargando música...';
       const track = state.musicTracks[state.selectedTrackIdx];
       const resp = await fetch(track.url);
-      musicBytes = new Uint8Array(await resp.arrayBuffer());
+      const mp3Bytes = await resp.arrayBuffer();
+
+      // Decodificar MP3 → PCM con Web Audio API
+      const offlineCtx = new OfflineAudioContext(1, 1, 44100);
+      const audioBuffer = await offlineCtx.decodeAudioData(mp3Bytes);
+      audioSampleRate = audioBuffer.sampleRate;
+      audioChannels = audioBuffer.numberOfChannels;
+
+      // Extraer todos los samples (mezclar canales a mono si es stereo)
+      const totalSamples = audioBuffer.length;
+      const mixed = new Float32Array(totalSamples);
+      for (let ch = 0; ch < audioChannels; ch++) {
+        const chan = audioBuffer.getChannelData(ch);
+        for (let i = 0; i < totalSamples; i++) mixed[i] += chan[i];
+      }
+      if (audioChannels > 1) { for (let i = 0; i < totalSamples; i++) mixed[i] /= audioChannels; }
+
+      // El fade-out se aplica después, cuando sepamos la duración del video
+      audioPCM = mixed;
       audioEl = new Audio(track.url);
       hasAudio = true;
     } catch (e) {
@@ -856,16 +863,87 @@ async function renderVideo() {
   const ctx = canvas.getContext('2d');
   const timelineData = buildTimeline(state.photos, TRANS_DUR);
   const totalDuration = timelineData[timelineData.length - 1].end;
+  const totalFrames = Math.ceil(totalDuration * FPS);
 
-  // --- GRABAR VIDEO (solo video, sin audio) ---
-  const videoStream = canvas.captureStream(FPS);
-  const recMime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-    ? 'video/webm;codecs=vp9' : 'video/webm;codecs=vp8';
-  const recorder = new MediaRecorder(videoStream, { mimeType: recMime, videoBitsPerSecond: BITRATE });
-  const chunks = [];
-  recorder.ondataavailable = e => chunks.push(e.data);
-  const recordingDone = new Promise(r => { recorder.onstop = () => r(chunks); });
-  recorder.start(100);
+  // --- AJUSTAR AUDIO PCM a la duración exacta del video ---
+  if (hasAudio && audioPCM) {
+    const targetSamples = Math.ceil(totalDuration * audioSampleRate);
+    if (audioPCM.length > targetSamples) {
+      // Truncar audio al largo del video
+      audioPCM = audioPCM.slice(0, targetSamples);
+    } else if (audioPCM.length < targetSamples) {
+      // Rellenar con silencio al final
+      const padded = new Float32Array(targetSamples);
+      padded.set(audioPCM);
+      audioPCM = padded;
+    }
+    // Re-aplicar fade-out sobre el largo exacto del video
+    const fadeSec = Math.min(2.5, totalDuration * 0.3);
+    const fadeStartSample = Math.max(0, targetSamples - Math.floor(fadeSec * audioSampleRate));
+    for (let i = fadeStartSample; i < targetSamples; i++) {
+      audioPCM[i] *= (1 - (i - fadeStartSample) / (targetSamples - fadeStartSample));
+    }
+  }
+
+  // --- MP4 MUXER ---
+  const muxerConfig = {
+    target: new Mp4Muxer.ArrayBufferTarget(),
+    video: { codec: 'avc', width: W, height: H },
+    firstTimestampBehavior: 'offset',
+  };
+  if (hasAudio) {
+    muxerConfig.audio = { codec: 'aac', sampleRate: audioSampleRate, numberOfChannels: 1 };
+  }
+  const muxer = new Mp4Muxer.Muxer(muxerConfig);
+  let muxerVideoReady = false;
+  let muxerAudioReady = false;
+
+  // --- VIDEO ENCODER (H.264 nativo del navegador) ---
+  let videoEncoderError = null;
+  const videoEncoder = new VideoEncoder({
+    output: (chunk, meta) => {
+      muxer.addVideoChunk(chunk, meta);
+      if (meta?.keyFrame) muxerVideoReady = true;
+    },
+    error: (e) => { videoEncoderError = e; console.error('VideoEncoder:', e); },
+  });
+
+  const videoCodec = 'avc1.42001E'; // H.264 Baseline Level 3
+  const videoSupport = await VideoEncoder.isConfigSupported({
+    codec: videoCodec, width: W, height: H,
+    bitrate: BITRATE, framerate: FPS,
+  });
+  if (!videoSupport.supported) {
+    throw new Error('Códec H.264 no soportado en este navegador. Usá Chrome o Edge.');
+  }
+  videoEncoder.configure({
+    codec: videoCodec, width: W, height: H,
+    bitrate: BITRATE, framerate: FPS,
+    latencyMode: 'quality',
+  });
+
+  // --- AUDIO ENCODER (AAC nativo) ---
+  let audioEncoder = null;
+  if (hasAudio && audioPCM) {
+    audioEncoder = new AudioEncoder({
+      output: (chunk, meta) => {
+        muxer.addAudioChunk(chunk, meta);
+        muxerAudioReady = true;
+      },
+      error: (e) => console.error('AudioEncoder:', e),
+    });
+
+    const audioSupport = await AudioEncoder.isConfigSupported({
+      codec: 'mp4a.40.2', sampleRate: audioSampleRate,
+      numberOfChannels: 1, bitrate: 128000,
+    });
+    if (audioSupport.supported) {
+      audioEncoder.configure({
+        codec: 'mp4a.40.2', sampleRate: audioSampleRate,
+        numberOfChannels: 1, bitrate: 128000,
+      });
+    }
+  }
 
   // --- REPRODUCIR MÚSICA por parlantes (preview) ---
   if (hasAudio && audioEl) {
@@ -873,73 +951,106 @@ async function renderVideo() {
     audioEl.play().catch(() => {});
   }
 
+  // --- ENCODIFICAR AUDIO (en paralelo, una sola ráfaga) ---
+  if (hasAudio && audioEncoder && audioPCM) {
+    const samplesPerChunk = Math.floor(audioSampleRate / 10); // 100ms chunks
+    let offset = 0;
+    let timestamp = 0;
+    while (offset < audioPCM.length) {
+      const chunkSize = Math.min(samplesPerChunk, audioPCM.length - offset);
+      const chunk = audioPCM.slice(offset, offset + chunkSize);
+      const audioData = new AudioData({
+        format: 'f32-planar',
+        sampleRate: audioSampleRate,
+        numberOfFrames: chunkSize,
+        numberOfChannels: 1,
+        timestamp: timestamp,
+        data: chunk,
+      });
+      audioEncoder.encode(audioData);
+      audioData.close();
+      offset += chunkSize;
+      timestamp += Math.round((chunkSize / audioSampleRate) * 1_000_000); // microsegundos
+    }
+    audioEncoder.flush().then(() => { muxerAudioReady = true; });
+  } else {
+    muxerAudioReady = true; // sin audio → listo
+  }
+
+  // --- LOOP DE RENDER + ENCODIFICACIÓN DE VIDEO ---
   const startTime = performance.now() / 1000;
+  let frameIdx = 0;
+  let lastEncodedTime = -1;
   let lastProgress = -1;
 
   await new Promise(resolve => {
     function renderLoop() {
-      if (!state.isRendering) {
-        recorder.stop(); if (audioEl) audioEl.pause(); resolve(); return;
-      }
+      if (!state.isRendering) { resolve(); return; }
+
       const elapsed = performance.now() / 1000 - startTime;
       const pct = Math.round(Math.min(elapsed / totalDuration, 1) * 100);
       if (pct !== lastProgress) {
         lastProgress = pct;
         progressFill.style.width = pct + '%';
-        progressText.textContent = `Renderizando video... ${pct}% (quedan ~${Math.max(0,Math.round(totalDuration-elapsed))}s)`;
+        progressText.textContent = `Renderizando H.264... ${pct}% (quedan ~${Math.max(0,Math.round(totalDuration-elapsed))}s)`;
       }
-      if (elapsed >= totalDuration) {
-        recorder.stop(); if (audioEl) { audioEl.pause(); audioEl = null; } resolve(); return;
+
+      // Dibujar frame actual
+      drawFrame(ctx, images, timelineData, Math.min(elapsed, totalDuration), W, H);
+
+      // Encodificar a 30fps
+      const frameTime = frameIdx / FPS;
+      if (elapsed >= frameTime && frameIdx < totalFrames) {
+        if (videoEncoderError) {
+          toast('⚠️ Error en codificación H.264', 'error');
+          resolve(); return;
+        }
+        if (videoEncoder.encodeQueueSize < 5) {
+          const vf = new VideoFrame(canvas, {
+            timestamp: Math.round(frameTime * 1_000_000),
+            duration: Math.round(1 / FPS * 1_000_000),
+          });
+          videoEncoder.encode(vf, { keyFrame: frameIdx % 30 === 0 });
+          vf.close();
+          lastEncodedTime = frameTime;
+          frameIdx++;
+        }
       }
-      drawFrame(ctx, images, timelineData, elapsed, W, H);
+
+      if (elapsed >= totalDuration && frameIdx >= totalFrames) {
+        // Ya terminamos todos los frames
+        resolve();
+        return;
+      }
+
+      if (elapsed >= totalDuration + 2) {
+        // Timeout de seguridad
+        resolve();
+        return;
+      }
+
       requestAnimationFrame(renderLoop);
     }
     renderLoop();
   });
 
-  const videoChunks = await recordingDone;
-  const videoBlob = new Blob(videoChunks, { type: recMime });
+  // --- FINALIZAR ---
+  if (audioEl) { audioEl.pause(); audioEl = null; }
+  await videoEncoder.flush();
+  videoEncoder.close();
+  if (audioEncoder) { audioEncoder.close(); }
 
-  // --- COMBINAR CON FFMPEG si hay música ---
-  let finalBlob = videoBlob;
-  let finalExt = 'webm';
-  let finalLabel = 'WebM (sin audio)';
+  // Esperar que el muxer termine
+  await new Promise(r => setTimeout(r, 200));
+  muxer.finalize();
 
-  if (hasAudio && musicBytes) {
-    progressText.textContent = 'Combinando video + música (FFmpeg)...';
-    try {
-      const ff = await getFFmpeg();
-      const videoBytes = new Uint8Array(await videoBlob.arrayBuffer());
-      await ff.writeFile('input.webm', videoBytes);
-      await ff.writeFile('music.mp3', musicBytes);
-
-      const fadeStart = Math.max(0, totalDuration - 2.5);
-      await ff.exec([
-        '-i', 'input.webm', '-i', 'music.mp3',
-        '-c:v', 'libx264', '-c:a', 'aac',
-        '-b:v', '2M', '-b:a', '128k',
-        '-af', `afade=t=out:st=${fadeStart.toFixed(1)}:d=2.5`,
-        '-shortest', '-movflags', '+faststart', '-y', 'output.mp4'
-      ]);
-
-      const out = await ff.readFile('output.mp4');
-      finalBlob = new Blob([out], { type: 'video/mp4' });
-      finalExt = 'mp4';
-      finalLabel = 'H.264 MP4 + música';
-      await ff.deleteFile('input.webm');
-      await ff.deleteFile('music.mp3');
-      await ff.deleteFile('output.mp4');
-    } catch (e) {
-      console.error('FFmpeg error:', e);
-      toast('⚠️ Error al combinar audio. Video sin música.', 'error');
-    }
-  }
-
-  // --- DESCARGAR ---
-  const url = URL.createObjectURL(finalBlob);
+  // --- OBTENER BLOB Y DESCARGAR ---
+  const { buffer } = muxer.target;
+  const blob = new Blob([buffer], { type: 'video/mp4' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'giro_video_' + Date.now() + '.' + finalExt;
+  a.download = 'giro_video_' + Date.now() + '.mp4';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
@@ -947,7 +1058,7 @@ async function renderVideo() {
   btnRender.disabled = false;
   btnRender.innerHTML = '<span>🎬</span> Crear Video';
   progressWrap.classList.remove('active');
-  toast('✅ ¡Video creado! (' + finalLabel + ', ' + W + '×' + H + ')');
+  toast('✅ ¡Video creado! (H.264 MP4 + AAC, ' + W + '×' + H + ', 2 Mbps)');
 }
 
 // ===== 12. FUNCIONES DE RENDER =====
