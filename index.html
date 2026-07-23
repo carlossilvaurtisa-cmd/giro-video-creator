@@ -852,7 +852,42 @@ async function renderVideo() {
   const BITRATE = 2000000; // 2 Mbps — óptimo WhatsApp (<16 MB)
   const TRANS_DUR = state.transitionDuration;
 
-  // Cargar imágenes primero para detectar proporción
+  // ⚡ Desbloquear audio INMEDIATAMENTE (política de autoplay — debe ser antes de cualquier await largo)
+  let audioCtx = null;
+  let audioEl = null;
+  let gainNode = null;
+  let audioDest = null;
+  let hasAudio = false;
+
+  if (state.selectedTrackIdx >= 0 && state.selectedTrackIdx < state.musicTracks.length) {
+    try {
+      const track = state.musicTracks[state.selectedTrackIdx];
+      audioCtx = new AudioContext();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+      // Crear elemento <audio> nativo (más fiable que AudioBuffer)
+      audioEl = new Audio();
+      audioEl.src = track.url;
+      audioEl.loop = false;
+
+      // Conectar al grafo Web Audio (toma control del audio del elemento)
+      const mediaSource = audioCtx.createMediaElementSource(audioEl);
+      audioDest = audioCtx.createMediaStreamDestination();
+      gainNode = audioCtx.createGain();
+      gainNode.gain.value = 1;
+
+      mediaSource.connect(gainNode);
+      gainNode.connect(audioDest);           // → grabación
+      gainNode.connect(audioCtx.destination); // → parlantes (preview)
+
+      hasAudio = true;
+    } catch (e) {
+      console.error('Error al preparar audio:', e);
+      hasAudio = false;
+    }
+  }
+
+  // Cargar imágenes (puede tardar, pero el audio ya está desbloqueado)
   progressText.textContent = 'Cargando imágenes...';
   const images = await Promise.all(state.photos.map(p => loadImage(p.file)));
 
@@ -866,44 +901,6 @@ async function renderVideo() {
 
   const timelineData = buildTimeline(state.photos, TRANS_DUR);
   const totalDuration = timelineData[timelineData.length - 1].end;
-
-  let audioCtx = null;
-  let audioEl = null;       // Elemento <audio> nativo (más fiable)
-  let gainNode = null;
-  let audioDest = null;
-  let hasAudio = false;
-
-  // --- AUDIO SETUP vía elemento <audio> nativo (más robusto que AudioBuffer) ---
-  if (state.selectedTrackIdx >= 0 && state.selectedTrackIdx < state.musicTracks.length) {
-    try {
-      progressText.textContent = 'Cargando música...';
-      const track = state.musicTracks[state.selectedTrackIdx];
-
-      audioCtx = new AudioContext();
-      if (audioCtx.state === 'suspended') await audioCtx.resume();
-
-      // Usar elemento <audio> nativo — el navegador decodifica el MP3
-      audioEl = new Audio();
-      audioEl.src = track.url;
-      audioEl.loop = false;
-
-      // Conectar el audio element al grafo Web Audio (toma control del audio)
-      const mediaSource = audioCtx.createMediaElementSource(audioEl);
-
-      audioDest = audioCtx.createMediaStreamDestination();
-      gainNode = audioCtx.createGain();
-      gainNode.gain.value = 1;
-
-      mediaSource.connect(gainNode);
-      gainNode.connect(audioDest);           // → grabación
-      gainNode.connect(audioCtx.destination); // → parlantes (preview)
-
-      hasAudio = true;
-    } catch (e) {
-      console.error('Error al cargar audio:', e);
-      hasAudio = false;
-    }
-  }
 
   // --- VIDEO STREAM ---
   const videoStream = canvas.captureStream(FPS);
