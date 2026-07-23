@@ -7,10 +7,12 @@ from PIL import Image
 
 try:
     from moviepy import ImageClip, AudioFileClip, concatenate_videoclips, vfx
+    from moviepy.audio.fx.fadeout import fadeout as _audio_fadeout
     MOVIEPY_OK = True
 except Exception as e:
     print(f"WARNING: moviepy no disponible: {e}")
     MOVIEPY_OK = False
+    _audio_fadeout = None
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'giro-dev-key-2024')
@@ -63,18 +65,29 @@ def _render_thread(user_dir, task_id):
             img.save(t); tmp.append(t)
             clips.append(ImageClip(t, duration=durations[i]))
         for i, c in enumerate(clips):
-            if i>0: c=c.with_effects([vfx.CrossFadeIn(0.8)])
-            if i<len(clips)-1: c=c.with_effects([vfx.CrossFadeOut(0.8)])
-            clips[i]=c
-        video = concatenate_videoclips(clips, method="compose")
-        if data['music']:
-            mp = os.path.join(user_dir, data['music'])
-            if not os.path.exists(mp) and data.get('music_source')=='library':
-                mp = os.path.join(app.static_folder, 'musica', data['music'])
-            if os.path.exists(mp):
-                a = AudioFileClip(mp)
-                if a.duration > video.duration: a = a.subclipped(0, video.duration)
-                video = video.with_audio(a)
+            # Fade-in al principio, fade-out al final
+            if i > 0:
+                c = c.with_effects([vfx.FadeIn(0.8)])
+            if i < len(clips) - 1:
+                c = c.with_effects([vfx.FadeOut(0.8)])
+            clips[i] = c
+        # Padding negativo = solapamiento entre clips → crossfade
+        video = concatenate_videoclips(clips, method="compose", padding=-0.8)
+            if data['music']:
+                mp = os.path.join(user_dir, data['music'])
+                if not os.path.exists(mp) and data.get('music_source')=='library':
+                    mp = os.path.join(app.static_folder, 'musica', data['music'])
+                if os.path.exists(mp):
+                    a = AudioFileClip(mp)
+                    if a.duration > video.duration:
+                        a = a.subclipped(0, video.duration)
+                    # Fade-out últimos 2.5s
+                    try:
+                        if _audio_fadeout and a.duration > 2.5:
+                            a = a.with_effects([_audio_fadeout(2.5)])
+                    except:
+                        pass
+                    video = video.with_audio(a)
         video.write_videofile(out, codec='libx264', audio_codec='aac',
                               bitrate='1500k', fps=24, preset='ultrafast',
                               threads=2, logger=None)
